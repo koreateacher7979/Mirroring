@@ -416,10 +416,19 @@
                     document.getElementById('traineeStatusText').innerHTML = "네트워크 우회 경로를 탐색 중입니다... 🚀";
                 }
 
-                // 가짜 빈 스트림을 보내어 통화를 걸기 (수신 전용 연결 트리거)
+                // 가짜 빈 스트림(비디오+오디오)을 보내어 통화를 걸기 (미디어 규격 충돌 방지 완벽 대응)
                 const fakeCanvas = document.createElement("canvas");
                 fakeCanvas.width = 1; fakeCanvas.height = 1;
                 const fakeStream = fakeCanvas.captureStream(1);
+                
+                // 가짜 오디오 트랙 추가 (강사가 오디오를 보낼 때 충돌하여 까만화면이 되는 것 방지)
+                try {
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const dest = audioCtx.createMediaStreamDestination();
+                    fakeStream.addTrack(dest.stream.getAudioTracks()[0]);
+                } catch(e) {
+                    console.warn("가짜 오디오 트랙 생성 실패 (무시됨):", e);
+                }
                 
                 traineeCall = myPeer.call(targetId, fakeStream);
                 
