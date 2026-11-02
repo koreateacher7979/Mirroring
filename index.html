@@ -110,7 +110,10 @@
                             🛑 공유 멈추기
                         </button>
                     </div>
-                    <p class="text-sm font-medium text-amber-700 mt-4 text-center bg-amber-100 px-4 py-2 rounded-lg">💡 공유 시 <b>'시스템 오디오 공유'</b>를 체크하면 소리도 함께 들려요!</p>
+                    <p class="text-sm font-medium text-amber-700 mt-4 text-center bg-amber-100 px-4 py-2 rounded-lg leading-relaxed">
+                        💡 공유 시 <b>'시스템 오디오 공유'</b>를 반드시 체크해주세요!<br>
+                        (PC 자체의 볼륨이 0이거나 음소거 상태면 소리가 전달되지 않습니다)
+                    </p>
                 </div>
             </div>
 
@@ -126,7 +129,7 @@
                         <div class="absolute inset-0 bg-amber-200 rounded-full animate-ping opacity-75"></div>
                         <div class="relative flex items-center justify-center w-full h-full bg-amber-400 text-white rounded-full text-2xl">📡</div>
                     </div>
-                    <p class="text-amber-800 font-bold text-lg">나누미의 화면을 열심히 찾고 있어요...</p>
+                    <p id="traineeStatusText" class="text-amber-800 font-bold text-lg">나누미의 화면을 열심히 찾고 있어요...</p>
                     <p class="text-amber-600 text-sm mt-2">잠시만 기다려주세요 ☺️</p>
                 </div>
 
@@ -240,15 +243,16 @@
         // ================= 강사 (송출자) 로직 =================
         async function startScreenShare() {
             try {
-                // 화면 및 오디오 캡처 (에코 캔슬링 및 노이즈 억제 추가)
+                // 화면 및 오디오 캡처 (복잡한 제약조건을 빼고 기본 시스템 오디오가 캡처되도록 단순화)
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: { cursor: "always" },
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: false
-                    }
+                    audio: true
                 });
+
+                // 오디오 트랙이 포함되었는지 확인하여 강사에게 알림
+                if (localStream.getAudioTracks().length === 0) {
+                    showMsg("⚠️ 오디오가 감지되지 않았어요! 화면 선택 창에서 '시스템 오디오 공유'를 꼭 체크해주세요.", 5000);
+                }
 
                 // 공유 중지 감지 (브라우저 UI를 통한 중지)
                 localStream.getVideoTracks()[0].onended = () => stopScreenShare();
@@ -344,6 +348,10 @@
             document.getElementById('shareStatus').classList.add('hidden');
             document.getElementById('viewerCount').classList.add('hidden');
 
+            // 🌟 접속해 있는 모든 보미들의 통화/연결을 강제로 끊어 대기 상태로 되돌아갈 수 있게 함
+            Object.values(activeCalls).forEach(call => call.close());
+            Object.values(activeConns).forEach(conn => conn.close());
+
             if (myPeer) {
                 myPeer.destroy();
                 myPeer = null;
@@ -392,7 +400,7 @@
 
                     call.on('close', () => {
                         // 강사가 공유를 중단한 경우
-                        resetTraineeVideo();
+                        resetTraineeVideo(true);
                         tryConnectToInstructor(); // 다시 강사 대기 상태로 전환
                     });
                 });
@@ -423,7 +431,10 @@
                 // 강사에게 '나 여기있다'고 신호 보냄
                 traineeConn = myPeer.connect(targetRoomId); 
 
-                traineeConn.on('close', () => { traineeConn = null; });
+                traineeConn.on('close', () => { 
+                    traineeConn = null; 
+                    resetTraineeVideo(true);
+                });
                 traineeConn.on('error', () => { traineeConn = null; });
             };
             
@@ -431,10 +442,19 @@
             connectInterval = setInterval(connect, 2000); // 0.5초 폭탄 요청을 2초로 완화하여 서버 안정화
         }
 
-        function resetTraineeVideo() {
+        function resetTraineeVideo(isStopped = false) {
             document.getElementById('traineeVideo').srcObject = null;
             document.getElementById('videoContainer').classList.add('hidden');
             document.getElementById('traineeStatus').classList.remove('hidden');
+            
+            const statusText = document.getElementById('traineeStatusText');
+            if (statusText) {
+                if (isStopped) {
+                    statusText.textContent = "나누미가 화면 공유를 잠시 멈췄습니다. 대기 중... ☺️";
+                } else {
+                    statusText.textContent = "나누미의 화면을 열심히 찾고 있어요...";
+                }
+            }
         }
 
         function cleanupTrainee() {
@@ -447,7 +467,7 @@
                 myPeer.destroy();
                 myPeer = null;
             }
-            resetTraineeVideo();
+            resetTraineeVideo(false);
         }
 
         // 연수자 오디오 토글 기능 (같은 공간에 있을 경우 하울링 방지용)
