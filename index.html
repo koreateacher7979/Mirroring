@@ -135,8 +135,17 @@
                 </div>
 
                 <div id="videoContainer" class="hidden relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group border-4 border-white" ondblclick="toggleFullScreen()">
-                    <!-- 연수자 비디오에 기본적으로 muted 속성을 추가하여 하울링 원천 차단 -->
-                    <video id="traineeVideo" class="w-full h-full object-contain" autoplay playsinline muted></video>
+                    
+                    <!-- 모바일 재생 차단 시 표시될 오버레이 버튼 -->
+                    <div id="playOverlay" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
+                        <p class="text-white mb-4 font-bold text-sm sm:text-base text-center px-4">스마트폰 브라우저 정책으로 자동 재생이 일시 대기중입니다.</p>
+                        <button onclick="forcePlay()" class="btn-pop bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-full font-bold shadow-lg flex items-center gap-2">
+                            ▶️ 화면 재생하기
+                        </button>
+                    </div>
+
+                    <!-- 연수자 비디오에 기본적으로 muted 속성을 추가하여 하울링 원천 차단. 모바일 호환을 위해 webkit-playsinline 추가 -->
+                    <video id="traineeVideo" class="w-full h-full object-contain" autoplay playsinline webkit-playsinline muted></video>
                     
                     <!-- 커스텀 컨트롤 바 -->
                     <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex justify-between items-center z-10">
@@ -412,7 +421,11 @@
                         
                         if(video.srcObject !== remoteStream) {
                             video.srcObject = remoteStream;
-                            video.play().catch(e => console.error("자동 재생 대기:", e));
+                            // 모바일 등에서 브라우저 정책으로 자동 재생이 막히면 재생 버튼 오버레이 띄우기
+                            video.play().catch(e => {
+                                console.warn("자동 재생 차단됨 (모바일 정책 등):", e);
+                                document.getElementById('playOverlay').classList.remove('hidden');
+                            });
                         }
                     });
 
@@ -531,6 +544,16 @@
                     document.webkitExitFullscreen();
                 }
             }
+        }
+        
+        // 스마트폰 강제 재생 함수
+        function forcePlay() {
+            const video = document.getElementById('traineeVideo');
+            video.play().then(() => {
+                document.getElementById('playOverlay').classList.add('hidden');
+            }).catch(e => {
+                showMsg("재생에 실패했습니다. 화면을 다시 눌러주세요.");
+            });
         }
         
         // 창 닫을 때 정리
