@@ -203,26 +203,62 @@
         let connectInterval = null;
         let traineeConn = null;
 
-        // 🌟 [수정됨] 고정된 설정 대신, 사용자가 입력한 TURN 서버를 동적으로 가져오는 함수
-        function getIceConfig() {
-            const savedUrl = localStorage.getItem('turnUrl');
-            const savedUser = localStorage.getItem('turnUser');
-            const savedPass = localStorage.getItem('turnPass');
+        // 🌟 [추가됨] 구글 시트 "서버" 탭에서 TURN 정보를 실시간으로 읽어오는 함수
+        async function fetchTurnConfigFromSheet() {
+            // gviz API를 사용하여 '서버' 시트 데이터 지정해서 가져오기
+            const sheetUrl = 'https://docs.google.com/spreadsheets/d/1gZZF84ftssX4ekiJDVOZe3m57jfmoAJg2PYTAMwLEPI/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent('서버');
+            try {
+                const response = await fetch(sheetUrl);
+                if (!response.ok) throw new Error("Network response error");
+                const csvData = await response.text();
+                
+                const rows = csvData.split('\n');
+                if (rows.length > 1) {
+                    // 첫 번째 줄(헤더) 건너뛰고 두 번째 줄(rows[1]) 데이터 추출
+                    // CSV는 값을 쌍따옴표로 감싸서 반환하므로 쌍따옴표 제거 처리
+                    const cols = rows[1].split(',').map(col => col.replace(/^"|"$/g, '').trim());
+                    
+                    // A열(url), B열(user), C열(pass) 추출 성공 시 반환
+                    if (cols.length >= 3 && cols[0]) {
+                        return { url: cols[0], user: cols[1], pass: cols[2] };
+                    }
+                }
+            } catch (error) {
+                console.warn("TURN 서버 시트를 읽어올 수 없습니다.", error);
+            }
+            return null;
+        }
 
+        // 🌟 [수정됨] 고정된 설정 대신, 구글 시트에서 TURN 서버를 가져오는 함수 (비동기)
+        async function getIceConfig() {
             const iceServers = [
                 // 글로벌 STUN 서버 (기본적인 길 찾기)
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' }
             ];
 
-            // 사용자가 저장한 TURN 서버가 있다면 추가하여 방화벽 뚫기 적용
-            if (savedUrl && savedUser && savedPass) {
+            // 1순위: 구글 시트 "서버" 탭에서 실시간으로 가져오기
+            const turnConfig = await fetchTurnConfigFromSheet();
+
+            // 2순위: 사용자가 직접 입력한 로컬 저장 값
+            const savedUrl = localStorage.getItem('turnUrl');
+            const savedUser = localStorage.getItem('turnUser');
+            const savedPass = localStorage.getItem('turnPass');
+
+            if (turnConfig && turnConfig.url) {
+                iceServers.push({
+                    urls: turnConfig.url,
+                    username: turnConfig.user,
+                    credential: turnConfig.pass
+                });
+                console.log("✅ 구글 시트의 TURN 서버가 적용되었습니다.", turnConfig.url);
+            } else if (savedUrl && savedUser && savedPass) {
                 iceServers.push({
                     urls: savedUrl,
                     username: savedUser,
                     credential: savedPass
                 });
-                console.log("✅ 개인 TURN 서버가 적용되었습니다.");
+                console.log("✅ 로컬에 저장된 개인 TURN 서버가 적용되었습니다.");
             } else {
                 console.log("⚠️ 기본 STUN 서버만 사용 중입니다. (LTE 등에서 막힐 수 있음)");
             }
@@ -385,8 +421,9 @@
                 const inputCode = document.getElementById('authCodeInput').value || "1234";
                 const roomId = 'mirror-korea-' + inputCode;
 
-                // 통신 서버 연결 (개인 TURN 설정 동적 반영)
-                myPeer = new Peer(roomId, getIceConfig());
+                // 🌟 [수정됨] 통신 서버 연결 전 시트에서 서버 정보를 완벽히 불러올 때까지(await) 기다림
+                const iceConfig = await getIceConfig();
+                myPeer = new Peer(roomId, iceConfig);
 
                 myPeer.on('open', id => {
                     console.log('강사 방이 성공적으로 생성되었습니다.');
@@ -489,8 +526,9 @@
                 const code = sheetCode || "1234";
                 targetRoomId = 'mirror-korea-' + code;
 
-                // 통신 서버 연결 (개인 TURN 설정 동적 반영)
-                myPeer = new Peer(getIceConfig()); 
+                // 🌟 [수정됨] 연수자 쪽에서도 시트 정보를 완벽히 가져올 때까지(await) 기다림
+                const iceConfig = await getIceConfig();
+                myPeer = new Peer(iceConfig); 
 
                 myPeer.on('open', id => {
                     console.log('연수자 준비 완료');
