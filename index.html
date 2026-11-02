@@ -178,18 +178,15 @@
         let connectInterval = null;
         let traineeConn = null;
 
-        // 🌟 [최종 방화벽 우회 설정] 가용한 모든 무료 STUN/TURN 서버 총동원
+        // 🌟 [최종 방화벽 우회 설정 및 사설 TURN 서버 입력란]
         const customIceConfig = {
             config: {
                 'iceServers': [
-                    // 글로벌 STUN 서버 (포트 다변화)
+                    // 글로벌 STUN 서버 (기본적인 길 찾기)
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun.cloudflare.com:3478' },
-                    { urls: 'stun:stun.sipgate.net:80' },
-                    { urls: 'stun:stun.sipgate.net:443' },
-                    { urls: 'stun:stun.framasoft.org:3478' },
-                    // 무료 TURN 서버 (오픈 릴레이 - 포트/TCP 다변화)
+                    // 공용 무료 TURN 서버 (서버 과부하로 자주 끊길 수 있음)
                     {
                         urls: 'turn:openrelay.metered.ca:80',
                         username: 'openrelayproject',
@@ -205,6 +202,15 @@
                         username: 'openrelayproject',
                         credential: 'openrelayproject'
                     }
+                    /* 💡 [매우 중요] LTE/다른 인터넷에서 무조건 뚫리게 하려면 아래 주석을 풀고 나만의 서버를 입력하세요.
+                     * 얻는 곳: metered.ca 접속 -> 가입(무료) -> TURN 서버 생성 -> 주소/아이디/비번 획득
+                     *
+                    ,{
+                        urls: 'turn:나의서버주소.metered.ca:443',
+                        username: '나의아이디',
+                        credential: '나의비밀번호'
+                    }
+                    */
                 ],
                 'iceCandidatePoolSize': 10 // 연결 후보군 미리 생성 (속도 향상)
             },
@@ -346,6 +352,16 @@
                         activeCalls[conn.peer] = call;
                         updateViewerCount();
                         
+                        // 🌟 [추가됨] 영상 통신 상태(방화벽 통과 여부) 실시간 감지
+                        if (call.peerConnection) {
+                            call.peerConnection.addEventListener('iceconnectionstatechange', () => {
+                                if (call.peerConnection.iceConnectionState === 'failed' || call.peerConnection.iceConnectionState === 'disconnected') {
+                                    console.warn('보미와의 P2P 영상 연결이 방화벽에 의해 실패했습니다.');
+                                    removeViewer(conn.peer);
+                                }
+                            });
+                        }
+
                         conn.on('close', () => removeViewer(conn.peer));
                         call.on('close', () => removeViewer(conn.peer));
                         call.on('error', () => removeViewer(conn.peer));
@@ -431,6 +447,21 @@
                     call.answer(); 
                     if(connectInterval) clearInterval(connectInterval); 
                     
+                    // 🌟 [추가됨] 영상 통신 상태(방화벽 통과 여부) 실시간 감지
+                    if (call.peerConnection) {
+                        call.peerConnection.addEventListener('iceconnectionstatechange', () => {
+                            const state = call.peerConnection.iceConnectionState;
+                            console.log("현재 영상 연결 상태:", state);
+                            // 방화벽에 완전히 막혀버린 경우
+                            if (state === 'failed') {
+                                showMsg("통신사(LTE) 또는 강력한 방화벽에 막혀 영상을 받을 수 없습니다. (개인 TURN 서버 필요)", 5000);
+                                resetTraineeVideo(true);
+                                const statusText = document.getElementById('traineeStatusText');
+                                if(statusText) statusText.innerHTML = "네트워크 방화벽에 의해 연결이 차단되었습니다 😢<br><span class='text-sm font-normal'>같은 와이파이로 접속하시거나, 관리자에게 문의하세요.</span>";
+                            }
+                        });
+                    }
+
                     call.on('stream', remoteStream => {
                         document.getElementById('traineeStatus').classList.add('hidden');
                         document.getElementById('videoContainer').classList.remove('hidden');
