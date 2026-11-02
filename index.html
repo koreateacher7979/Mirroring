@@ -129,80 +129,30 @@
         </div>
     </main>
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, addDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Firebase Configuration (Canvas Environment)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'mirroring-app';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        
-        let app, auth, db, userId;
-        const ROOM_ID = 'main-class-room'; // 단일 방 사용
-
-        // WebRTC Configuration
-        const rtcConfig = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
-
+    <!-- WebRTC 통신 스크립트 (서버 없이 무료 공용 PeerJS 서버 활용) -->
+    <script>
+        // 전역 변수
         let localStream = null;
-        const peerConnections = {}; // 강사용: 연수자별 PC 저장 { traineeId: RTCPeerConnection }
-        let myTraineePc = null; // 연수자용 단일 PC
-        let unsubscribeRoom = null;
-        let unsubscribeStudents = null;
+        let myPeer = null;
+        let activeCalls = {};
+        let activeConns = {};
+        let targetRoomId = null;
+        let connectInterval = null;
 
-        // UI 제어 함수 전역 등록
-        window.selectRole = selectRole;
-        window.resetApp = resetApp;
-        window.verifyInstructor = verifyInstructor;
-        window.startScreenShare = startScreenShare;
-        window.stopScreenShare = stopScreenShare;
-        window.toggleFullScreen = toggleFullScreen;
-
-        // Firebase 초기화
-        async function initFirebase() {
-            try {
-                if(Object.keys(firebaseConfig).length === 0) throw new Error("Firebase 설정이 없습니다.");
-                app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                userId = auth.currentUser.uid;
-                console.log("Firebase Connected", userId);
-            } catch(e) {
-                console.error("Firebase init error:", e);
-                showMsg("서버 연결에 실패했습니다. 새로고침 해주세요.");
-            }
-        }
-
-        // 구글 스프레드시트 실시간 데이터 가져오기 (요구사항 2)
-        // 공개된 시트의 CSV 내보내기 링크 활용
+        // 구글 스프레드시트 실시간 데이터 가져오기
         async function fetchAuthCodeFromSheet() {
             const sheetUrl = 'https://docs.google.com/spreadsheets/d/1gZZF84ftssX4ekiJDVOZe3m57jfmoAJg2PYTAMwLEPI/export?format=csv&gid=0';
             try {
                 const response = await fetch(sheetUrl);
                 if (!response.ok) throw new Error("Network response was not ok");
                 const csvData = await response.text();
-                
-                // CSV 파싱 (간단한 형태)
                 const rows = csvData.split('\n');
                 if(rows.length > 1) {
-                    // A2 셀 데이터 (두번째 줄 첫번째 열)
                     const a2Data = rows[1].split(',')[0];
                     return a2Data ? a2Data.trim().replace(/"/g, '') : null;
                 }
             } catch (error) {
-                console.warn("구글 시트를 읽어올 수 없습니다. 시트가 '링크가 있는 모든 사용자에게 공개' 상태인지 확인하세요.", error);
+                console.warn("구글 시트를 읽어올 수 없습니다.", error);
                 return null;
             }
         }
@@ -248,9 +198,7 @@
             btn.disabled = true;
 
             const sheetCode = await fetchAuthCodeFromSheet();
-            
-            // 시트를 읽을 수 없는 경우(CORS/권한 문제)를 대비한 Fallback 처리 (데모 지속성 확보)
-            const validCode = sheetCode || "1234"; 
+            const validCode = sheetCode || "1234"; // 시트 오류 시 대체 코드
 
             if (inputCode === validCode) {
                 document.getElementById('authSection').classList.add('hidden');
@@ -258,22 +206,21 @@
                 showMsg("인증되었습니다. 화면 공유를 시작할 수 있습니다.");
             } else {
                 showMsg("인증번호가 일치하지 않습니다.");
-                if(!sheetCode) console.log("Fallback 모드 작동 중. 임시 비밀번호: 1234");
             }
             btn.textContent = originalText;
             btn.disabled = false;
         }
 
-        // ================= WebRTC 강사 (송출자) 로직 =================
+        // ================= 강사 (송출자) 로직 =================
         async function startScreenShare() {
             try {
-                // 오디오 포함 디스플레이 미디어 요청 (요구사항 3)
+                // 화면 및 오디오 캡처
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: { cursor: "always" },
                     audio: true
                 });
 
-                // 송출 중단 감지 (사용자가 브라우저 UI에서 '공유 중지'를 누를 경우)
+                // 공유 중지 감지 (브라우저 UI를 통한 중지)
                 localStream.getVideoTracks()[0].onended = () => stopScreenShare();
 
                 const video = document.getElementById('instructorVideo');
@@ -284,101 +231,60 @@
                 document.getElementById('stopShareBtn').classList.remove('hidden');
                 document.getElementById('shareStatus').classList.remove('hidden');
                 document.getElementById('viewerCount').classList.remove('hidden');
-                document.getElementById('viewerCount').textContent = "접속자: 0명";
+                updateViewerCount();
 
-                // Firebase 방 생성 및 연수자 대기
-                await setupRoom();
+                // 방 코드 설정
+                const inputCode = document.getElementById('authCodeInput').value || "1234";
+                const roomId = 'mirror-korea-' + inputCode;
+
+                // 통신 서버 연결
+                myPeer = new Peer(roomId);
+
+                myPeer.on('open', id => {
+                    console.log('강사 방이 성공적으로 생성되었습니다.');
+                });
+
+                // 연수자가 접속을 시도하면
+                myPeer.on('connection', conn => {
+                    conn.on('open', () => {
+                        activeConns[conn.peer] = conn;
+                        
+                        // 강사가 연수자에게 영상 통화를 걸어 화면 스트림 전달
+                        const call = myPeer.call(conn.peer, localStream);
+                        activeCalls[conn.peer] = call;
+                        updateViewerCount();
+                        
+                        conn.on('close', () => removeViewer(conn.peer));
+                        call.on('close', () => removeViewer(conn.peer));
+                    });
+                });
+
+                myPeer.on('error', err => {
+                    console.error("Peer Error:", err);
+                    if (err.type === 'unavailable-id') {
+                        showMsg("이미 동일한 인증번호로 공유가 진행 중입니다.");
+                        stopScreenShare();
+                    }
+                });
 
             } catch (err) {
-                console.error("화면 공유 에러: ", err);
-                if (err.name === "NotAllowedError" && err.message.includes("permissions policy")) {
-                    showMsg("미리보기 환경에서는 화면 캡처가 차단됩니다. 코드를 별도의 HTML 파일로 저장하여 브라우저에서 직접 열어주세요.", 6000);
-                } else {
-                    showMsg("화면 공유 권한을 거부했거나 기기에서 지원하지 않습니다.");
-                }
+                console.error("공유 에러: ", err);
+                showMsg("화면 공유 권한이 없거나 취소되었습니다.");
             }
         }
 
-        async function setupRoom() {
-            if(!db) return;
-            const roomDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', ROOM_ID);
-            
-            // 방 활성화 상태 기록
-            await setDoc(roomDoc, { active: true, instructorId: userId, timestamp: Date.now() });
-
-            // 참여 중인 학생들 감지
-            const studentsCol = collection(roomDoc, 'students');
-            
-            // 기존 학생 데이터 초기화 (이전 세션 찌꺼기 제거용 - 생략 가능하나 안정성을 위해)
-            
-            unsubscribeStudents = onSnapshot(studentsCol, (snapshot) => {
-                document.getElementById('viewerCount').textContent = `접속자: ${snapshot.docs.length}명`;
-                
-                snapshot.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        const traineeId = change.doc.id;
-                        handleNewTrainee(traineeId, roomDoc);
-                    }
-                    if (change.type === 'removed') {
-                        const traineeId = change.doc.id;
-                        if(peerConnections[traineeId]) {
-                            peerConnections[traineeId].close();
-                            delete peerConnections[traineeId];
-                        }
-                    }
-                });
-            }, (err) => console.error("학생 감지 에러", err));
+        function removeViewer(peerId) {
+            if(activeConns[peerId]) delete activeConns[peerId];
+            if(activeCalls[peerId]) delete activeCalls[peerId];
+            updateViewerCount();
         }
 
-        async function handleNewTrainee(traineeId, roomDoc) {
-            const pc = new RTCPeerConnection(rtcConfig);
-            peerConnections[traineeId] = pc;
-
-            // 트랙 추가
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
-            });
-
-            const traineeDocRef = doc(roomDoc, 'students', traineeId);
-            const instructorIceCol = collection(traineeDocRef, 'instructorICE');
-            const traineeIceCol = collection(traineeDocRef, 'traineeICE');
-
-            // 강사 ICE 후보 수집 -> Firebase 전송
-            pc.onicecandidate = event => {
-                if (event.candidate) {
-                    addDoc(instructorIceCol, event.candidate.toJSON());
-                }
-            };
-
-            // Offer 생성 및 전송
-            try {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                await updateDoc(traineeDocRef, { 
-                    offer: { type: offer.type, sdp: offer.sdp } 
-                });
-            } catch(e) { console.error("Offer 에러", e); }
-
-            // 연수자 Answer 및 ICE 수신 대기
-            onSnapshot(traineeDocRef, (snap) => {
-                const data = snap.data();
-                if (data?.answer && !pc.currentRemoteDescription) {
-                    const answer = new RTCSessionDescription(data.answer);
-                    pc.setRemoteDescription(answer).catch(e => console.error(e));
-                }
-            }, (err) => console.error(err));
-
-            onSnapshot(traineeIceCol, (snapshot) => {
-                snapshot.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        const candidate = new RTCIceCandidate(change.doc.data());
-                        pc.addIceCandidate(candidate).catch(e => console.error(e));
-                    }
-                });
-            }, (err) => console.error(err));
+        function updateViewerCount() {
+            const count = Object.keys(activeCalls).length;
+            document.getElementById('viewerCount').textContent = `접속자: ${count}명`;
         }
 
-        async function stopScreenShare() {
+        function stopScreenShare() {
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
@@ -390,133 +296,98 @@
             document.getElementById('shareStatus').classList.add('hidden');
             document.getElementById('viewerCount').classList.add('hidden');
 
-            // 모든 WebRTC 커넥션 종료
-            Object.values(peerConnections).forEach(pc => pc.close());
-            for (let id in peerConnections) delete peerConnections[id];
-
-            if(unsubscribeStudents) unsubscribeStudents();
-            
-            if(db) {
-                const roomDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', ROOM_ID);
-                try {
-                    await updateDoc(roomDoc, { active: false });
-                } catch(e) {}
+            if (myPeer) {
+                myPeer.destroy();
+                myPeer = null;
             }
+            activeCalls = {};
+            activeConns = {};
         }
 
-        // ================= WebRTC 연수자 (수신자) 로직 =================
+        // ================= 연수자 (수신자) 로직 =================
         async function joinAsTrainee() {
-            if(!db || !userId) return showMsg("서버와 연결되지 않았습니다.");
+            const sheetCode = await fetchAuthCodeFromSheet();
+            const code = sheetCode || "1234";
+            targetRoomId = 'mirror-korea-' + code;
 
-            const roomDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', ROOM_ID);
-            const traineeDocRef = doc(roomDoc, 'students', userId);
-            
-            const traineeIceCol = collection(traineeDocRef, 'traineeICE');
-            const instructorIceCol = collection(traineeDocRef, 'instructorICE');
+            // 랜덤 ID로 통신 서버 접속
+            myPeer = new Peer(); 
 
-            myTraineePc = new RTCPeerConnection(rtcConfig);
+            myPeer.on('open', id => {
+                console.log('연수자 준비 완료');
+                tryConnectToInstructor();
+            });
 
-            // 원격 트랙 수신 시 비디오에 연결
-            myTraineePc.ontrack = event => {
-                document.getElementById('traineeStatus').classList.add('hidden');
-                document.getElementById('videoContainer').classList.remove('hidden');
-                const video = document.getElementById('traineeVideo');
-                if(video.srcObject !== event.streams[0]) {
-                    video.srcObject = event.streams[0];
-                    video.play().catch(e => console.error("자동 재생 차단:", e));
-                }
-            };
-
-            // 연수자 ICE 수집 -> Firebase 전송
-            myTraineePc.onicecandidate = event => {
-                if (event.candidate) {
-                    addDoc(traineeIceCol, event.candidate.toJSON());
-                }
-            };
-
-            // 방 접속 알림 (초기화)
-            await setDoc(traineeDocRef, { joinedAt: Date.now() });
-
-            // Offer 수신 대기
-            unsubscribeRoom = onSnapshot(traineeDocRef, async (snap) => {
-                const data = snap.data();
-                if (data?.offer && !myTraineePc.currentRemoteDescription) {
-                    try {
-                        const offer = new RTCSessionDescription(data.offer);
-                        await myTraineePc.setRemoteDescription(offer);
-                        const answer = await myTraineePc.createAnswer();
-                        await myTraineePc.setLocalDescription(answer);
-                        await updateDoc(traineeDocRef, { 
-                            answer: { type: answer.type, sdp: answer.sdp } 
-                        });
-                    } catch(e) { console.error("Answer 생성 에러", e); }
-                }
-            }, (err) => console.error(err));
-
-            // 강사 ICE 수신
-            onSnapshot(instructorIceCol, (snapshot) => {
-                snapshot.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        const candidate = new RTCIceCandidate(change.doc.data());
-                        myTraineePc.addIceCandidate(candidate).catch(e => console.error(e));
+            // 강사가 화면을 걸어오면 수신
+            myPeer.on('call', call => {
+                call.answer(); // 통화 수락
+                if(connectInterval) clearInterval(connectInterval); 
+                
+                call.on('stream', remoteStream => {
+                    document.getElementById('traineeStatus').classList.add('hidden');
+                    document.getElementById('videoContainer').classList.remove('hidden');
+                    const video = document.getElementById('traineeVideo');
+                    
+                    if(video.srcObject !== remoteStream) {
+                        video.srcObject = remoteStream;
+                        video.play().catch(e => console.error("자동 재생 대기:", e));
                     }
                 });
-            }, (err) => console.error(err));
 
-            // 방 활성 상태 감시 (강사가 공유 중지 시)
-            onSnapshot(roomDoc, (snap) => {
-                if (snap.exists() && snap.data().active === false) {
-                    document.getElementById('traineeStatus').classList.remove('hidden');
-                    document.getElementById('videoContainer').classList.add('hidden');
-                    document.getElementById('traineeVideo').srcObject = null;
-                }
-            }, (err) => console.error(err));
+                call.on('close', () => {
+                    // 강사가 공유를 중단한 경우
+                    resetTraineeVideo();
+                    tryConnectToInstructor(); // 다시 강사 대기 상태로 전환
+                });
+            });
+
+            myPeer.on('error', err => {
+                // 강사 방이 아직 없을 때 (setInterval을 통해 재시도됨)
+            });
         }
 
-        async function cleanupTrainee() {
-            if(myTraineePc) {
-                myTraineePc.close();
-                myTraineePc = null;
-            }
-            if(unsubscribeRoom) unsubscribeRoom();
+        // 강사 방을 찾을 때까지 주기적으로 연결 시도
+        function tryConnectToInstructor() {
+            if (connectInterval) clearInterval(connectInterval);
+            
+            const connect = () => {
+                if (!myPeer || myPeer.destroyed) return;
+                // 강사에게 '나 여기있다'고 신호 보냄
+                myPeer.connect(targetRoomId); 
+            };
+            
+            connect(); // 즉시 실행
+            connectInterval = setInterval(connect, 3000); // 3초마다 재시도
+        }
+
+        function resetTraineeVideo() {
             document.getElementById('traineeVideo').srcObject = null;
-            document.getElementById('traineeStatus').classList.remove('hidden');
             document.getElementById('videoContainer').classList.add('hidden');
-
-            if(db && userId) {
-                const traineeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', ROOM_ID, 'students', userId);
-                try {
-                    await deleteDoc(traineeDocRef);
-                } catch(e) {}
-            }
+            document.getElementById('traineeStatus').classList.remove('hidden');
         }
 
-        // 전체 화면 토글
+        function cleanupTrainee() {
+            if (connectInterval) clearInterval(connectInterval);
+            if (myPeer) {
+                myPeer.destroy();
+                myPeer = null;
+            }
+            resetTraineeVideo();
+        }
+
+        // 전체 화면 토글 기능
         function toggleFullScreen() {
             const video = document.getElementById('traineeVideo');
             if (!document.fullscreenElement) {
-                if (video.requestFullscreen) {
-                    video.requestFullscreen();
-                } else if (video.webkitRequestFullscreen) { /* Safari */
-                    video.webkitRequestFullscreen();
-                } else if (video.msRequestFullscreen) { /* IE11 */
-                    video.msRequestFullscreen();
-                }
+                if (video.requestFullscreen) video.requestFullscreen();
+                else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
             } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                } else if (document.webkitExitFullscreen) { /* Safari */
-                    document.webkitExitFullscreen();
-                } else if (document.msExitFullscreen) { /* IE11 */
-                    document.msExitFullscreen();
-                }
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
             }
         }
-
-        // 페이지 로드 시 Firebase 초기화
-        window.addEventListener('load', initFirebase);
         
-        // 창 닫을 때 리소스 정리
+        // 창 닫을 때 정리
         window.addEventListener('beforeunload', () => {
             stopScreenShare();
             cleanupTrainee();
