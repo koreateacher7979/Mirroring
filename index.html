@@ -110,9 +110,10 @@
                             🛑 공유 멈추기
                         </button>
                     </div>
-                    <p class="text-sm font-medium text-amber-700 mt-4 text-center bg-amber-100 px-4 py-2 rounded-lg leading-relaxed">
-                        💡 공유 시 <b>'시스템 오디오 공유'</b>를 반드시 체크해주세요!<br>
-                        (PC 자체의 볼륨이 0이거나 음소거 상태면 소리가 전달되지 않습니다)
+                    <p class="text-sm font-medium text-amber-700 mt-4 text-center bg-amber-100 px-4 py-3 rounded-xl leading-relaxed">
+                        💡 <b>오디오 꿀팁:</b> PC 볼륨이 0이어도 소리를 공유하려면<br>
+                        화면 선택 시 <b>'크롬 탭(Chrome Tab)'</b>을 선택하고 <b>'탭 오디오 공유'</b>를 켜주세요!<br>
+                        (전체 화면 공유는 PC 자체 볼륨 설정의 영향을 받습니다)
                     </p>
                 </div>
             </div>
@@ -243,15 +244,25 @@
         // ================= 강사 (송출자) 로직 =================
         async function startScreenShare() {
             try {
-                // 화면 및 오디오 캡처 (복잡한 제약조건을 빼고 기본 시스템 오디오가 캡처되도록 단순화)
+                // 다중 접속 시 강사 PC의 인터넷 대역폭 과부하를 막기 위해 화질과 프레임 최적화 (720p, 15fps)
+                // 오디오는 원본을 살리기 위해 잡음 제거 등의 옵션을 껐습니다.
                 localStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { cursor: "always" },
-                    audio: true
+                    video: { 
+                        cursor: "always",
+                        width: { max: 1280 },
+                        height: { max: 720 },
+                        frameRate: { max: 15 }
+                    },
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
                 });
 
                 // 오디오 트랙이 포함되었는지 확인하여 강사에게 알림
                 if (localStream.getAudioTracks().length === 0) {
-                    showMsg("⚠️ 오디오가 감지되지 않았어요! 화면 선택 창에서 '시스템 오디오 공유'를 꼭 체크해주세요.", 5000);
+                    showMsg("⚠️ 오디오가 감지되지 않았어요! 화면 선택 창에서 '오디오 공유'를 꼭 체크해주세요.", 5000);
                 }
 
                 // 공유 중지 감지 (브라우저 UI를 통한 중지)
