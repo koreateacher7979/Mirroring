@@ -176,17 +176,20 @@
         let activeConns = {};
         let targetRoomId = null;
         let connectInterval = null;
-        let traineeConn = null; // 다중 접속 안정화를 위한 변수 추가
+        let traineeConn = null;
 
-        // 🌟 [핵심 변경] 강력한 방화벽/LTE 우회를 위한 종합 TURN/STUN 서버 설정
-        // 통신사(LTE)와 교육망(유선) 방화벽을 모두 뚫어보기 위해 가용한 모든 포트(80, 443)와 프로토콜(UDP, TCP)을 쏟아붓습니다.
+        // 🌟 [최종 방화벽 우회 설정] 가용한 모든 무료 STUN/TURN 서버 총동원
         const customIceConfig = {
             config: {
                 'iceServers': [
+                    // 글로벌 STUN 서버 (포트 다변화)
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun.cloudflare.com:3478' },
-                    { urls: 'stun:openrelay.metered.ca:80' },
+                    { urls: 'stun:stun.sipgate.net:80' },
+                    { urls: 'stun:stun.sipgate.net:443' },
+                    { urls: 'stun:stun.framasoft.org:3478' },
+                    // 무료 TURN 서버 (오픈 릴레이 - 포트/TCP 다변화)
                     {
                         urls: 'turn:openrelay.metered.ca:80',
                         username: 'openrelayproject',
@@ -202,8 +205,10 @@
                         username: 'openrelayproject',
                         credential: 'openrelayproject'
                     }
-                ]
-            }
+                ],
+                'iceCandidatePoolSize': 10 // 연결 후보군 미리 생성 (속도 향상)
+            },
+            debug: 1
         };
 
         // 구글 스프레드시트 실시간 데이터 가져오기
@@ -415,7 +420,6 @@
                 const code = sheetCode || "1234";
                 targetRoomId = 'mirror-korea-' + code;
 
-                // 랜덤 ID로 통신 서버 접속 (공통 방화벽 우회 설정 적용)
                 myPeer = new Peer(customIceConfig); 
 
                 myPeer.on('open', id => {
@@ -423,9 +427,8 @@
                     tryConnectToInstructor();
                 });
 
-                // 강사가 화면을 걸어오면 수신
                 myPeer.on('call', call => {
-                    call.answer(); // 통화 수락
+                    call.answer(); 
                     if(connectInterval) clearInterval(connectInterval); 
                     
                     call.on('stream', remoteStream => {
@@ -435,10 +438,9 @@
                         
                         if(video.srcObject !== remoteStream) {
                             video.srcObject = remoteStream;
-                            // 영상 메타데이터가 완전히 로드된 후 재생 시도 (타이밍 오류 방지)
                             video.onloadedmetadata = () => {
                                 video.play().catch(e => {
-                                    console.warn("자동 재생 차단됨 (모바일 정책 등):", e);
+                                    console.warn("자동 재생 차단됨:", e);
                                     document.getElementById('playOverlay').classList.remove('hidden');
                                 });
                             };
@@ -446,15 +448,13 @@
                     });
 
                     call.on('close', () => {
-                        // 강사가 공유를 중단한 경우
                         resetTraineeVideo(true);
-                        tryConnectToInstructor(); // 다시 강사 대기 상태로 전환
+                        tryConnectToInstructor(); 
                     });
                 });
 
                 myPeer.on('error', err => {
                     console.warn("보미 Peer 통신 에러:", err.type);
-                    // 🌟 다중 접속 오류 해결: 강사 방이 아직 없을 때만 재시도를 위해 초기화
                     if (err.type === 'peer-unavailable') {
                         if (traineeConn) {
                             traineeConn.close();
@@ -469,14 +469,15 @@
         }
 
         // 강사 방을 찾을 때까지 주기적으로 연결 시도
+        let waitingTime = 0; // 지연 시간 추적
         function tryConnectToInstructor() {
             if (connectInterval) clearInterval(connectInterval);
             traineeConn = null;
+            waitingTime = 0;
             
             const connect = () => {
                 if (!myPeer || myPeer.destroyed) return;
                 
-                // 이미 성공적으로 연결되어 영상을 받고 있다면 재시도 중단
                 const video = document.getElementById('traineeVideo');
                 if (video.srcObject) return;
                 
@@ -487,7 +488,6 @@
                     traineeConn = null;
                 }
                 
-                // 강사에게 '나 여기있다'고 신호 보냄 (방화벽 충돌을 막기 위해 reliable 옵션 제거)
                 traineeConn = myPeer.connect(targetRoomId); 
 
                 traineeConn.on('open', () => {
@@ -501,10 +501,19 @@
                     resetTraineeVideo(true);
                 });
                 traineeConn.on('error', () => { traineeConn = null; });
+                
+                // 대기 시간(방화벽 지연) 안내 로직
+                waitingTime += 4;
+                const statusText = document.getElementById('traineeStatusText');
+                if (statusText && statusText.textContent.includes('열심히 찾고')) {
+                    if (waitingTime > 12) {
+                        statusText.innerHTML = "강력한 방화벽이나 모바일 망을 우회하고 있습니다.<br>시간이 조금 더 걸릴 수 있어요 🚀";
+                    }
+                }
             };
             
-            connect(); // 즉시 실행
-            connectInterval = setInterval(connect, 4000); // 통신 과부하 방지를 위해 4초 간격으로 재시도
+            connect(); 
+            connectInterval = setInterval(connect, 4000); 
         }
 
         function resetTraineeVideo(isStopped = false) {
