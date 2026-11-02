@@ -9,41 +9,37 @@
     <style>
         body { font-family: 'Pretendard', sans-serif; }
         .hide { display: none !important; }
-        #logBox { max-height: 120px; overflow-y: auto; scroll-behavior: smooth; }
     </style>
 </head>
 <body class="bg-orange-50 min-h-screen flex flex-col">
 
-    <!-- 개발자 명시 헤더 -->
-    <div class="bg-orange-400 text-white text-right pr-4 py-2 text-sm font-bold shadow-md tracking-wider">
+    <div class="bg-orange-400 text-white text-right pr-4 py-2 text-sm shadow-md tracking-wider">
         개발자: 가치있는 미래교육 연구소 대표 김병찬
     </div>
 
     <div class="max-w-4xl mx-auto w-full p-6 flex-grow flex flex-col items-center">
         
         <div class="text-center mb-8 mt-4">
-            <h1 class="text-3xl font-extrabold text-orange-600 mb-2">✨ 다함께 화면 보기 ✨</h1>
+            <h1 class="text-3xl text-orange-600 mb-2">✨ 다함께 화면 보기 ✨</h1>
             <p class="text-gray-600">나누미의 화면과 소리를 보미들에게 실시간으로 전해드려요!</p>
         </div>
 
-        <!-- 1. 역할 선택 화면 -->
         <div id="selectionScreen" class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md text-center">
-            <p id="loadingMsg" class="text-orange-500 font-bold mb-4 animate-pulse">구글 시트 설정 정보를 불러오는 중입니다...</p>
+            <p id="loadingMsg" class="text-orange-500 mb-4 animate-pulse">구글 시트 설정 정보를 불러오는 중입니다...</p>
             <div id="buttons" class="space-y-4 hide">
-                <button onclick="startNanumi()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-6 rounded-xl transition duration-200 text-lg shadow">
+                <button onclick="startNanumi()" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 px-6 rounded-xl transition duration-200 text-lg shadow">
                     🎈 나는 화면 나누미 (강사)
                 </button>
-                <button onclick="startBomi()" class="w-full bg-yellow-400 hover:bg-yellow-500 text-orange-900 font-bold py-4 px-6 rounded-xl transition duration-200 text-lg shadow">
+                <button onclick="startBomi()" class="w-full bg-yellow-400 hover:bg-yellow-500 text-orange-900 py-4 px-6 rounded-xl transition duration-200 text-lg shadow">
                     👀 나는 화면 보미 (연수생)
                 </button>
             </div>
         </div>
 
-        <!-- 2. 나누미 (강사) 화면 -->
         <div id="nanumiScreen" class="bg-white p-6 rounded-2xl shadow-lg w-full hide">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold text-orange-600">🎈 나누미 제어판</h2>
-                <span id="viewerCount" class="bg-orange-100 text-orange-800 text-sm font-semibold px-3 py-1 rounded-full">함께하는 보미: 0명</span>
+                <h2 class="text-xl text-orange-600">🎈 나누미 제어판</h2>
+                <span id="viewerCount" class="bg-orange-100 text-orange-800 text-sm px-3 py-1 rounded-full">함께하는 보미: 0명</span>
             </div>
             
             <div class="bg-gray-900 rounded-xl overflow-hidden aspect-video relative flex items-center justify-center mb-4 border-4 border-gray-100">
@@ -54,20 +50,19 @@
             </div>
 
             <div class="flex gap-4">
-                <button id="startShareBtn" onclick="startScreenShare()" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition duration-200 shadow">
+                <button id="startShareBtn" onclick="startScreenShare()" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl transition duration-200 shadow">
                     ▶️ 공유 시작하기
                 </button>
-                <button id="stopShareBtn" onclick="stopScreenShare()" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition duration-200 shadow hide">
+                <button id="stopShareBtn" onclick="stopScreenShare()" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl transition duration-200 shadow hide">
                     ⏹️ 공유 멈추기
                 </button>
             </div>
-            <p class="text-xs text-gray-500 text-center mt-3">💡 소리도 전송하려면 공유 창에서 '크롬 탭'을 선택하거나 '시스템 오디오 공유'를 체크하세요.</p>
+            <p class="text-xs text-gray-500 text-center mt-3">소리도 전송하려면 공유 창에서 크롬 탭을 선택하거나 시스템 오디오 공유를 체크하세요.</p>
         </div>
 
-        <!-- 3. 보미 (연수생) 화면 -->
         <div id="bomiScreen" class="bg-white p-6 rounded-2xl shadow-lg w-full hide">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold text-yellow-600">👀 보미 화면</h2>
+                <h2 class="text-xl text-yellow-600">👀 보미 화면</h2>
                 <button onclick="location.reload()" class="text-sm text-gray-500 hover:text-gray-700 bg-gray-100 px-3 py-1 rounded">나가기</button>
             </div>
 
@@ -75,28 +70,22 @@
                 <video id="bomiVideo" autoplay playsinline muted class="w-full h-full object-contain hide"></video>
                 <div id="bomiWaitMsg" class="absolute text-white text-center flex flex-col items-center">
                     <svg class="animate-spin h-8 w-8 text-yellow-400 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <p class="font-bold">나누미의 화면을 열심히 찾고 있어요...</p>
+                    <p>나누미의 화면을 열심히 찾고 있어요...</p>
                     <p class="text-sm text-gray-300 mt-1">잠시만 기다려주세요 💛</p>
                 </div>
                 <div id="playOverlay" class="absolute inset-0 bg-black/50 flex items-center justify-center hide">
-                    <button onclick="forcePlay()" class="bg-yellow-400 text-black font-bold py-3 px-6 rounded-full shadow-lg text-lg">▶️ 터치하여 화면 보기</button>
+                    <button onclick="forcePlay()" class="bg-yellow-400 text-black py-3 px-6 rounded-full shadow-lg text-lg">▶️ 터치하여 화면 보기</button>
                 </div>
             </div>
 
             <div class="flex gap-4">
-                <button id="audioToggleBtn" onclick="toggleAudio()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition duration-200 shadow">
+                <button id="audioToggleBtn" onclick="toggleAudio()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-xl transition duration-200 shadow">
                     🔇 소리 켜기 (하울링 주의)
                 </button>
-                <button onclick="toggleFullscreen()" class="flex-1 bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl transition duration-200 shadow">
+                <button onclick="toggleFullscreen()" class="flex-1 bg-gray-800 hover:bg-gray-900 text-white py-3 rounded-xl transition duration-200 shadow">
                     🔲 전체화면
                 </button>
             </div>
-        </div>
-
-        <!-- 4. 실시간 디버그 로그 (오류 추적용) -->
-        <div class="w-full mt-6 bg-white p-4 rounded-xl shadow border border-gray-200">
-            <h3 class="text-xs font-bold text-gray-500 mb-2">상태 알림창 (오류 원인 파악용)</h3>
-            <div id="logBox" class="text-xs text-gray-600 bg-gray-50 p-2 rounded h-24"></div>
         </div>
 
     </div>
@@ -111,75 +100,51 @@
         
         const nanumiVideo = document.getElementById('nanumiVideo');
         const bomiVideo = document.getElementById('bomiVideo');
-        
-        // 화면에 로그 띄우기 함수
-        function addLog(msg) {
-            const logBox = document.getElementById('logBox');
-            const time = new Date().toLocaleTimeString();
-            logBox.innerHTML += `<div>[${time}] ${msg}</div>`;
-            logBox.scrollTop = logBox.scrollHeight;
-            console.log(`[${time}] ${msg}`);
-        }
 
-        // 1. 구글 시트 데이터 가져오기 (설정 + 서버)
         async function fetchConfig() {
-            addLog("구글 시트 연동 시작...");
             try {
-                // 설정 시트 (인증번호)
                 const res1 = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=설정`);
                 const csv1 = await res1.text();
                 const lines1 = csv1.split('\n');
                 if (lines1.length > 1) {
-                    config.roomId = lines1[1].replace(/"/g, '').split(',')[0].trim();
-                    addLog(`방 인증번호 로드 완료: ${config.roomId}`);
+                    config.roomId = lines1[1].replace(/"/g, '').replace(/\r/g, '').split(',')[0].trim();
                 }
 
-                // 서버 시트 (TURN 정보)
                 const res2 = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=서버`);
                 const csv2 = await res2.text();
                 const lines2 = csv2.split('\n');
                 if (lines2.length > 1) {
-                    const cols = lines2[1].replace(/"/g, '').split(',');
+                    const cols = lines2[1].replace(/"/g, '').replace(/\r/g, '').split(',');
                     if (cols.length >= 3) {
                         config.turnUrl = cols[0].trim();
                         config.turnUser = cols[1].trim();
                         config.turnPass = cols[2].trim();
-                        addLog(`TURN 서버 설정 로드 완료`);
-                    } else {
-                        addLog(`TURN 서버 정보가 비어있습니다. 기본 서버를 사용합니다.`);
                     }
                 }
                 
                 document.getElementById('loadingMsg').classList.add('hide');
                 document.getElementById('buttons').classList.remove('hide');
-                addLog("준비 완료! 역할을 선택해주세요.");
-
             } catch (error) {
-                addLog(`시트 로드 에러: ${error.message}`);
-                addLog("데이터를 가져오지 못해 임시 번호로 시작합니다.");
+                console.error(error);
                 document.getElementById('loadingMsg').classList.add('hide');
                 document.getElementById('buttons').classList.remove('hide');
             }
         }
 
-        // 페이지 열리자마자 데이터 가져오기 시작
         fetchConfig();
 
-        // PeerJS 통신망 생성 함수
         function createPeer(id = null) {
             let iceServers = [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' }
             ];
 
-            // 시트에서 받아온 커스텀 TURN 서버가 있다면 투입!
             if (config.turnUrl && config.turnUser && config.turnPass) {
                 iceServers.push({
                     urls: config.turnUrl,
                     username: config.turnUser,
                     credential: config.turnPass
                 });
-                addLog("전용 우회(TURN) 서버가 네트워크 통신망에 장착되었습니다.");
             }
 
             const options = {
@@ -187,43 +152,29 @@
                     iceServers: iceServers,
                     iceTransportPolicy: 'all' 
                 },
-                debug: 2
+                debug: 0
             };
 
-            addLog("PeerJS 통신망 생성 시도 중...");
             return id ? new Peer(id, options) : new Peer(options);
         }
 
-        // ================= 나누미 (강사) 로직 =================
         function startNanumi() {
             document.getElementById('selectionScreen').classList.add('hide');
             document.getElementById('nanumiScreen').classList.remove('hide');
             
             peer = createPeer(`nanumi_${config.roomId}`);
             
-            peer.on('open', (id) => {
-                addLog(`나누미 방 생성 성공! (ID: ${id})`);
-            });
-
-            peer.on('error', (err) => {
-                addLog(`나누미 통신 에러: ${err.type} - ${err.message}`);
-            });
-
             peer.on('call', (call) => {
-                addLog(`새로운 보미 접속 시도 감지!`);
                 if (localStream) {
                     call.answer(localStream);
                     activeCalls[call.peer] = call;
                     updateViewerCount();
-                    addLog(`보미에게 영상 전송 시작`);
                     
                     call.on('close', () => {
                         delete activeCalls[call.peer];
                         updateViewerCount();
-                        addLog(`보미 접속 종료됨`);
                     });
                 } else {
-                    addLog(`화면 공유 전이라 통화를 거절함`);
                     call.close();
                 }
             });
@@ -231,23 +182,20 @@
 
         async function startScreenShare() {
             try {
-                addLog("화면 캡처 요청 중...");
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15 } },
                     audio: { echoCancellation: true, noiseSuppression: true }
                 });
                 
                 nanumiVideo.srcObject = localStream;
-                nanumiVideo.volume = 0; // 강사 본인 화면 하울링 방지
+                nanumiVideo.volume = 0; 
                 
                 document.getElementById('nanumiPlaceholder').classList.add('hide');
                 document.getElementById('startShareBtn').classList.add('hide');
                 document.getElementById('stopShareBtn').classList.remove('hide');
-                addLog("화면 캡처 성공! 대기 중인 보미가 있다면 접속할 수 있습니다.");
 
                 localStream.getVideoTracks()[0].onended = stopScreenShare;
             } catch (err) {
-                addLog(`캡처 권한 오류: ${err.message}`);
                 alert('화면 공유 권한이 필요합니다.');
             }
         }
@@ -265,7 +213,6 @@
             document.getElementById('nanumiPlaceholder').classList.remove('hide');
             document.getElementById('startShareBtn').classList.remove('hide');
             document.getElementById('stopShareBtn').classList.add('hide');
-            addLog("화면 공유를 중단했습니다.");
         }
 
         function updateViewerCount() {
@@ -273,7 +220,6 @@
             document.getElementById('viewerCount').innerText = `함께하는 보미: ${count}명`;
         }
 
-        // ================= 보미 (연수생) 로직 =================
         let bomiCall = null;
         let searchInterval = null;
 
@@ -281,19 +227,10 @@
             document.getElementById('selectionScreen').classList.add('hide');
             document.getElementById('bomiScreen').classList.remove('hide');
             
-            peer = createPeer(); // 연수생은 랜덤 ID 배정
+            peer = createPeer(); 
             
             peer.on('open', (id) => {
-                addLog(`보미 네트워크 접속 성공 (내 ID: ${id})`);
-                addLog(`나누미 방(nanumi_${config.roomId}) 검색 시작...`);
                 searchForNanumi();
-            });
-
-            peer.on('error', (err) => {
-                addLog(`보미 통신 에러: ${err.type} - ${err.message}`);
-                if(err.type === 'peer-unavailable') {
-                    addLog("아직 나누미가 화면 공유를 켜지 않았거나 방 번호가 다릅니다. (재검색 중...)");
-                }
             });
         }
 
@@ -301,11 +238,8 @@
             if (searchInterval) clearInterval(searchInterval);
             
             searchInterval = setInterval(() => {
-                if (bomiCall && bomiCall.open) return; // 이미 연결되어 있으면 스킵
+                if (bomiCall && bomiCall.open) return; 
                 
-                addLog("나누미에게 똑똑... 연결 요청 중...");
-                
-                // 가짜 빈 스트림을 보내서 전화(call)를 걸어야만 받을 수 있음 (PeerJS 특성)
                 const fakeCanvas = document.createElement("canvas");
                 fakeCanvas.width = 1; fakeCanvas.height = 1;
                 const fakeStream = fakeCanvas.captureStream(1);
@@ -315,40 +249,34 @@
                 if (!bomiCall) return;
 
                 bomiCall.on('stream', (stream) => {
-                    clearInterval(searchInterval); // 영상 들어오면 검색 중단
-                    addLog("나누미 화면 수신 성공!");
+                    clearInterval(searchInterval); 
                     
                     bomiVideo.srcObject = stream;
                     document.getElementById('bomiWaitMsg').classList.add('hide');
                     bomiVideo.classList.remove('hide');
 
-                    // 모바일 자동재생 방지 대처
                     bomiVideo.onloadedmetadata = async () => {
                         try {
                             await bomiVideo.play();
-                            addLog("비디오 정상 재생됨.");
                         } catch (e) {
-                            addLog("브라우저 자동재생 차단됨. 터치 유도 UI 표시.");
                             document.getElementById('playOverlay').classList.remove('hide');
                         }
                     };
                 });
 
                 bomiCall.on('close', () => {
-                    addLog("나누미가 화면 공유를 종료했습니다. 다시 대기합니다.");
                     bomiVideo.srcObject = null;
                     bomiVideo.classList.add('hide');
                     document.getElementById('bomiWaitMsg').classList.remove('hide');
-                    searchForNanumi(); // 끊기면 다시 무한 검색
+                    searchForNanumi(); 
                 });
 
-            }, 4000); // 4초마다 재검색 (부하 방지)
+            }, 4000); 
         }
 
         function forcePlay() {
             bomiVideo.play();
             document.getElementById('playOverlay').classList.add('hide');
-            addLog("사용자 터치로 강제 재생 성공");
         }
 
         function toggleAudio() {
@@ -369,7 +297,7 @@
             const container = document.getElementById('bomiVideoContainer');
             if (!document.fullscreenElement) {
                 if (container.requestFullscreen) { container.requestFullscreen(); } 
-                else if (container.webkitRequestFullscreen) { container.webkitRequestFullscreen(); } // iOS Safari
+                else if (container.webkitRequestFullscreen) { container.webkitRequestFullscreen(); } 
             } else {
                 if (document.exitFullscreen) { document.exitFullscreen(); } 
                 else if (document.webkitExitFullscreen) { document.webkitExitFullscreen(); }
