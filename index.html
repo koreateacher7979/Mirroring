@@ -116,6 +116,12 @@
                             🛑 공유 멈추기
                         </button>
                     </div>
+                    
+                    <!-- 강사측 방화벽 우회 버튼 -->
+                    <button id="instructorFirewallBtn" onclick="enableInstructorFirewall()" class="hidden mt-4 w-full max-w-md btn-pop py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-2xl font-bold shadow-md text-sm border border-gray-700 flex items-center justify-center gap-2">
+                        🛡️ 연수생이 검은 화면인가요? (강사측 우회모드 켜기)
+                    </button>
+
                     <p class="text-sm font-medium text-amber-700 mt-4 text-center bg-amber-100 px-4 py-3 rounded-xl leading-relaxed">
                         💡 <b>오디오 꿀팁:</b> 소리까지 함께 공유하려면<br>
                         화면 선택 시 <b>'크롬 탭(Chrome Tab)'</b>을 선택하고 <b>'탭 오디오 공유'</b>를 켜주세요!
@@ -324,6 +330,7 @@
                 document.getElementById('instructorPlaceholder').classList.add('hidden');
                 document.getElementById('startShareBtn').classList.add('hidden');
                 document.getElementById('stopShareBtn').classList.remove('hidden');
+                document.getElementById('instructorFirewallBtn').classList.remove('hidden');
                 document.getElementById('shareStatus').classList.remove('hidden');
                 document.getElementById('viewerCount').classList.remove('hidden');
 
@@ -388,13 +395,62 @@
 
             document.getElementById('startShareBtn').classList.remove('hidden');
             document.getElementById('stopShareBtn').classList.add('hidden');
+            document.getElementById('instructorFirewallBtn').classList.add('hidden');
             document.getElementById('shareStatus').classList.add('hidden');
             document.getElementById('viewerCount').classList.add('hidden');
+            isFirewallMode = false; // 공유를 멈추면 방화벽 모드 초기화
         }
 
         function updateViewerCount() {
             const count = Object.keys(activeCalls).length;
             document.getElementById('viewerCount').textContent = `함께하는 보미: ${count}명`;
+        }
+
+        // 강사측 방화벽 강제 우회 (TURN) 모드 실행
+        function enableInstructorFirewall() {
+            isFirewallMode = true;
+            showMsg("🛡️ 강사측 우회 통신망 가동! 연수생이 5초 내로 자동 재접속됩니다.", 5000);
+            
+            // 중복 클릭 방지를 위해 버튼 숨김
+            document.getElementById('instructorFirewallBtn').classList.add('hidden');
+
+            // 기존 일반 통신망 끊기
+            if (myPeer) {
+                myPeer.destroy();
+                myPeer = null;
+            }
+            Object.values(activeCalls).forEach(call => call.close());
+            activeCalls = {};
+            updateViewerCount();
+
+            // 1초 뒤 가장 강력한 방화벽 우회 옵션(Relay)으로 재연결
+            setTimeout(() => {
+                myPeer = createPeer(`mirror_korea_${sysConfig.roomId}`);
+                
+                myPeer.on('open', id => {
+                    console.log('🎈 나누미 우회 통신망 개설 완료:', id);
+                });
+
+                myPeer.on('call', (call) => {
+                    if (localStream) {
+                        call.answer(localStream);
+                        activeCalls[call.peer] = call;
+                        updateViewerCount();
+                        
+                        call.on('close', () => removeViewer(call.peer));
+                        call.on('error', () => removeViewer(call.peer));
+                    } else {
+                        call.close();
+                    }
+                });
+
+                myPeer.on('error', err => {
+                    if (err.type === 'unavailable-id') {
+                        showMsg("⚠️ 이미 누군가 같은 번호로 방을 만들었습니다.");
+                        stopScreenShare();
+                    }
+                });
+            }, 1000);
         }
 
         // ================= 보미 (연수생) 로직 =================
@@ -416,11 +472,11 @@
         // 안정적인 가짜 영상(640x480)을 만들어 모바일 먹통 및 데스크탑 까만 화면 방지
         function getFakeStream() {
             const canvas = document.createElement("canvas");
-            canvas.width = 640;
-            canvas.height = 480;
+            canvas.width = 320;
+            canvas.height = 240;
             const ctx = canvas.getContext("2d");
             ctx.fillStyle = "black";
-            ctx.fillRect(0, 0, 640, 480);
+            ctx.fillRect(0, 0, 320, 240);
             return canvas.captureStream(1); 
         }
 
@@ -531,10 +587,12 @@
 
         function forcePlay() {
             const video = document.getElementById('traineeVideo');
-            video.muted = true; // 모바일 정책상 강제로 음소거 상태여야만 재생이 허락됨
+            video.muted = false; // 모바일에서 직접 터치했으므로 소리 허용
             video.play().then(() => {
                 document.getElementById('playOverlay').classList.add('hidden');
-                showMsg("✅ 영상 재생이 시작되었습니다. 우측 하단에서 소리를 켜주세요.");
+                showMsg("✅ 영상 재생이 시작되었습니다.");
+                document.getElementById('audioIcon').textContent = '🔊';
+                document.getElementById('audioText').textContent = '소리 끄기';
             }).catch(e => {
                 showMsg("재생 실패. 화면을 다시 한번 천천히 터치해주세요.");
                 console.error(e);
