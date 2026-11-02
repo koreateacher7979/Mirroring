@@ -247,13 +247,19 @@
                 { urls: 'stun:stun1.l.google.com:19302' }
             ];
 
-            if (sysConfig.turnUrl && sysConfig.turnUser && sysConfig.turnPass) {
+            let turnUrl = sysConfig.turnUrl.trim();
+            if (turnUrl && sysConfig.turnUser && sysConfig.turnPass) {
+                // 사용자가 주소만 넣었을 경우 강력한 방화벽 우회용(TCP 443)으로 자동 포맷팅
+                if (!turnUrl.startsWith('turn')) {
+                    turnUrl = `turns:${turnUrl.replace(/^https?:\/\//, '')}:443?transport=tcp`;
+                }
+
                 iceServers.push({
-                    urls: sysConfig.turnUrl,
-                    username: sysConfig.turnUser,
-                    credential: sysConfig.turnPass
+                    urls: turnUrl,
+                    username: sysConfig.turnUser.trim(),
+                    credential: sysConfig.turnPass.trim()
                 });
-                console.log("🚀 구글 시트 TURN 서버 적용 완료");
+                console.log("🚀 구글 시트 TURN 서버 적용 완료:", turnUrl);
             }
 
             const options = {
@@ -328,23 +334,19 @@
                     console.log('🎈 나누미 통신망 개설 완료:', id);
                 });
 
-                // ★ 완벽한 방송국 방식: 연수생(보미)이 문을 두드리면 강사가 영상을 걸어줍니다 ★
-                myPeer.on('connection', (conn) => {
-                    conn.on('open', () => {
-                        if (localStream) {
-                            console.log("보미에게 역으로 영상 송출 시작:", conn.peer);
-                            // 강사가 영상을 담아서 연수생에게 전화를 걺!
-                            const call = myPeer.call(conn.peer, localStream);
-                            activeCalls[conn.peer] = call;
-                            updateViewerCount();
-                            
-                            call.on('close', () => removeViewer(conn.peer));
-                            call.on('error', () => removeViewer(conn.peer));
-                        } else {
-                            conn.send('NOT_READY');
-                            setTimeout(() => conn.close(), 500);
-                        }
-                    });
+                // ★ 방화벽 통과를 위해 보미가 안정적인 가짜 스트림으로 전화를 걸면 진짜 화면으로 응답합니다 ★
+                myPeer.on('call', (call) => {
+                    if (localStream) {
+                        console.log("보미 영상 요청 수락:", call.peer);
+                        call.answer(localStream);
+                        activeCalls[call.peer] = call;
+                        updateViewerCount();
+                        
+                        call.on('close', () => removeViewer(call.peer));
+                        call.on('error', () => removeViewer(call.peer));
+                    } else {
+                        call.close();
+                    }
                 });
 
                 myPeer.on('error', err => {
@@ -406,16 +408,45 @@
                 searchForNanumi();
             });
 
-            // ★ 강사(나누미)가 역으로 걸어온 영상을 받습니다 ★
-            myPeer.on('call', (call) => {
-                console.log("나누미의 화면 수신 중!");
-                isReceivingVideo = true;
-                if (connectInterval) clearInterval(connectInterval); // 핑거링 중지
-                
-                // 빈손으로 받기 (가짜 비디오/오디오가 없으므로 SDP 충돌 및 모바일 먹통 완벽 해결)
-                call.answer(); 
+            myPeer.on('error', err => {
+                console.warn('Peer 에러:', err.type);
+            });
+        }
 
-                call.on('stream', (stream) => {
+        // 안정적인 가짜 영상(640x480)을 만들어 모바일 먹통 및 데스크탑 까만 화면 방지
+        function getFakeStream() {
+            const canvas = document.createElement("canvas");
+            canvas.width = 640;
+            canvas.height = 480;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, 640, 480);
+            return canvas.captureStream(1); 
+        }
+
+        function searchForNanumi() {
+            if (connectInterval) clearInterval(connectInterval);
+            
+            const targetId = `mirror_korea_${sysConfig.roomId}`;
+            let attempts = 0;
+
+            const tryConnect = () => {
+                if (traineeCall && traineeCall.open) return; 
+                
+                attempts++;
+                if (attempts > 3) {
+                    document.getElementById('traineeStatusText').innerHTML = "네트워크 우회 경로를 탐색 중입니다... 🚀";
+                }
+
+                // ★ 방화벽에서 막히는 데이터 채널(SCTP) 대신 미디어 채널(RTP)로 직접 연결 시도 ★
+                const fakeStream = getFakeStream();
+                traineeCall = myPeer.call(targetId, fakeStream);
+                
+                if (!traineeCall) return;
+
+                traineeCall.on('stream', (stream) => {
+                    clearInterval(connectInterval); 
+                    
                     const video = document.getElementById('traineeVideo');
                     video.srcObject = stream;
                     
@@ -434,51 +465,17 @@
                         });
                     };
                     
-                    attemptPlay(); // 즉시 재생 시도
-                    video.onloadedmetadata = () => attemptPlay(); // 메타데이터 로드 후 확인 사살
+                    attemptPlay(); 
+                    video.onloadedmetadata = () => attemptPlay(); 
                 });
 
-                call.on('close', () => {
-                    isReceivingVideo = false;
+                traineeCall.on('close', () => {
                     resetTraineeVideo(true);
-                    searchForNanumi(); // 끊어지면 다시 찾기 시작
+                    searchForNanumi(); 
                 });
                 
-                call.on('error', () => {
-                    isReceivingVideo = false;
-                });
-            });
-
-            myPeer.on('error', err => {
-                console.warn('Peer 에러:', err.type);
-            });
-        }
-
-        function searchForNanumi() {
-            if (connectInterval) clearInterval(connectInterval);
-            
-            const targetId = `mirror_korea_${sysConfig.roomId}`;
-            let attempts = 0;
-
-            const tryConnect = () => {
-                if (isReceivingVideo) return; // 영상 받는 중이면 검색(핑) 중지
-                
-                attempts++;
-                if (attempts > 3) {
-                    document.getElementById('traineeStatusText').innerHTML = "네트워크 우회 경로를 탐색 중입니다... 🚀";
-                }
-
-                // ★ 가짜 비디오를 보내지 않고 데이터 연결로 "똑똑" 문만 두드리기 ★
-                const conn = myPeer.connect(targetId);
-                
-                conn.on('open', () => {
-                    console.log("나누미 방에 접속 요청(똑똑) 성공!");
-                });
-                
-                conn.on('data', (data) => {
-                    if (data === 'NOT_READY') {
-                        console.log("나누미가 아직 공유를 시작하지 않았습니다.");
-                    }
+                traineeCall.on('error', () => {
+                    resetTraineeVideo(false);
                 });
             };
 
