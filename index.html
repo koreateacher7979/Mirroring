@@ -121,12 +121,19 @@
                     <p class="text-gray-600 font-medium">강사님의 화면 공유를 기다리는 중입니다...</p>
                 </div>
 
-                <div id="videoContainer" class="hidden relative w-full aspect-video">
+                <div id="videoContainer" class="hidden relative w-full aspect-video bg-black rounded-xl overflow-hidden group">
                     <video id="traineeVideo" class="w-full h-full object-contain" autoplay playsinline></video>
-                    <!-- 전체화면 버튼 -->
-                    <button onclick="toggleFullScreen()" class="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded hover:bg-opacity-75 transition-opacity">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
-                    </button>
+                    
+                    <!-- 커스텀 컨트롤 바 (마우스 오버 또는 터치 시 표시됨) -->
+                    <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex justify-between items-center z-10">
+                        <button onclick="toggleAudio()" class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg backdrop-blur-sm flex items-center gap-2 transition-colors">
+                            <span id="audioIcon">🔊</span> <span id="audioText">소리 끄기</span>
+                        </button>
+                        <button onclick="toggleFullScreen()" class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg backdrop-blur-sm flex items-center gap-2 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                            전체화면
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -218,10 +225,14 @@
         // ================= 강사 (송출자) 로직 =================
         async function startScreenShare() {
             try {
-                // 화면 및 오디오 캡처
+                // 화면 및 오디오 캡처 (에코 캔슬링 및 노이즈 억제 추가)
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: { cursor: "always" },
-                    audio: true
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: false
+                    }
                 });
 
                 // 공유 중지 감지 (브라우저 UI를 통한 중지)
@@ -229,7 +240,9 @@
 
                 const video = document.getElementById('instructorVideo');
                 video.srcObject = localStream;
-                video.muted = true; // 본인 오디오 하울링 방지
+                // 강사 본인 PC에서의 무한 루프(하울링)를 완벽히 차단
+                video.muted = true; 
+                video.volume = 0;
 
                 document.getElementById('startShareBtn').classList.add('hidden');
                 document.getElementById('stopShareBtn').classList.remove('hidden');
@@ -371,7 +384,7 @@
             };
             
             connect(); // 즉시 실행
-            connectInterval = setInterval(connect, 3000); // 3초마다 재시도
+            connectInterval = setInterval(connect, 1000); // 접속 대기 시간을 3초에서 1초로 단축하여 빠른 접속 유도
         }
 
         function resetTraineeVideo() {
@@ -389,15 +402,34 @@
             resetTraineeVideo();
         }
 
-        // 전체 화면 토글 기능
-        function toggleFullScreen() {
+        // 연수자 오디오 토글 기능 (같은 공간에 있을 경우 하울링 방지용)
+        function toggleAudio() {
             const video = document.getElementById('traineeVideo');
+            video.muted = !video.muted;
+            document.getElementById('audioIcon').textContent = video.muted ? '🔇' : '🔊';
+            document.getElementById('audioText').textContent = video.muted ? '소리 켜기' : '소리 끄기';
+        }
+
+        // 전체 화면 토글 기능 (모바일 iOS Safari 완벽 지원 및 컨트롤 바 유지)
+        function toggleFullScreen() {
+            const container = document.getElementById('videoContainer');
+            const video = document.getElementById('traineeVideo');
+            
             if (!document.fullscreenElement) {
-                if (video.requestFullscreen) video.requestFullscreen();
-                else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
+                if (container.requestFullscreen) {
+                    container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) {
+                    container.webkitRequestFullscreen();
+                } else if (video.webkitEnterFullscreen) {
+                    // iOS 기기를 위한 예외 처리
+                    video.webkitEnterFullscreen();
+                }
             } else {
-                if (document.exitFullscreen) document.exitFullscreen();
-                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
             }
         }
         
