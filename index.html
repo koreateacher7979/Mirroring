@@ -141,6 +141,13 @@
 
                 <div id="videoContainer" class="hidden relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group border-4 border-white" ondblclick="toggleFullScreen()">
                     
+                    <!-- 까만 화면 해결 (방화벽 우회) 버튼 -->
+                    <div id="blackScreenFix" class="hidden absolute top-4 left-4 z-30">
+                        <button onclick="enableFirewallMode()" class="bg-rose-500/90 hover:bg-rose-500 text-white px-3 py-2 sm:px-4 sm:py-2 rounded-xl shadow-lg font-bold text-xs sm:text-sm btn-pop flex items-center gap-2 backdrop-blur-sm border border-rose-400">
+                            🛡️ 화면이 까맣나요? (방화벽 우회)
+                        </button>
+                    </div>
+
                     <!-- 모바일 재생 차단 시 표시될 오버레이 버튼 -->
                     <div id="playOverlay" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
                         <p class="text-white mb-4 font-bold text-sm sm:text-base text-center px-4">터치하여 화면과 소리를 켜주세요.</p>
@@ -179,6 +186,7 @@
         let activeConns = {};
         let connectInterval = null;
         let traineeCall = null;
+        let isFirewallMode = false; // 방화벽 강제 우회 상태
 
         // 메시지 표시 함수
         function showMsg(text, duration = 3000) {
@@ -250,7 +258,7 @@
             const options = {
                 config: {
                     iceServers: iceServers,
-                    iceTransportPolicy: 'all' 
+                    iceTransportPolicy: isFirewallMode ? 'relay' : 'all' // 방화벽 모드 시 TURN만 강제 사용
                 },
                 debug: 1
             };
@@ -426,14 +434,20 @@
                     document.getElementById('traineeStatus').classList.add('hidden');
                     document.getElementById('videoContainer').classList.remove('hidden');
 
-                    // 모바일 자동재생 정책 대응
-                    video.onloadedmetadata = async () => {
-                        try {
-                            await video.play();
-                        } catch (e) {
+                    if (!isFirewallMode) {
+                        document.getElementById('blackScreenFix').classList.remove('hidden');
+                    }
+
+                    // 모바일 자동재생 정책 대응 및 강력한 재생 시도
+                    const attemptPlay = () => {
+                        video.play().catch(e => {
+                            console.warn("자동재생 차단됨:", e);
                             document.getElementById('playOverlay').classList.remove('hidden');
-                        }
+                        });
                     };
+                    
+                    attemptPlay(); // 즉시 재생 시도
+                    video.onloadedmetadata = () => attemptPlay(); // 메타데이터 로드 후 확인 사살
                 });
 
                 traineeCall.on('close', () => {
@@ -477,6 +491,23 @@
                 myPeer = null;
             }
             resetTraineeVideo(false);
+        }
+
+        function enableFirewallMode() {
+            isFirewallMode = true;
+            showMsg("🛡️ 강력한 방화벽 우회 모드로 재접속합니다...", 4000);
+            
+            document.getElementById('videoContainer').classList.add('hidden');
+            document.getElementById('traineeStatus').classList.remove('hidden');
+            document.getElementById('traineeStatusText').innerHTML = "방화벽 강제 우회 모드로 연결 중입니다...<br><span class='text-sm text-amber-600'>(강제 TURN 릴레이 사용)</span>";
+            document.getElementById('blackScreenFix').classList.add('hidden');
+
+            cleanupTrainee();
+            
+            // 기존 연결을 완전히 죽이고 1.5초 뒤 릴레이(TURN) 전용으로 재생성
+            setTimeout(() => {
+                joinAsTrainee();
+            }, 1500);
         }
 
         function forcePlay() {
