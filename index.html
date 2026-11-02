@@ -51,6 +51,26 @@
             <span id="msgText">메시지</span>
         </div>
 
+        <!-- 🚀 TURN 서버 설정 모달 추가 -->
+        <div id="turnModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity">
+            <div class="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border-2 border-amber-200">
+                <h3 class="text-xl font-bold text-amber-900 mb-2 title-font">🚀 강력한 방화벽 우회 설정</h3>
+                <p class="text-sm text-gray-600 mb-4 leading-relaxed">
+                    LTE나 학교망에서 접속이 안 될 경우, <b>나만의 릴레이(TURN) 서버</b>가 필요합니다.<br>
+                    <a href="https://www.metered.ca/stun-turn" target="_blank" class="text-blue-500 underline font-bold">Metered.ca (클릭)</a>에서 무료 가입 후 서버 정보를 받아 아래에 입력하세요.
+                </p>
+                <div class="space-y-3">
+                    <input type="text" id="turnUrl" placeholder="TURN URL (예: turn:xxxx.metered.ca:443)" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-400 outline-none text-sm">
+                    <input type="text" id="turnUser" placeholder="Username (아이디)" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-400 outline-none text-sm">
+                    <input type="text" id="turnPass" placeholder="Credential (비밀번호)" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-400 outline-none text-sm">
+                </div>
+                <div class="mt-6 flex gap-3">
+                    <button onclick="closeTurnSettings()" class="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-bold btn-pop">닫기</button>
+                    <button onclick="saveTurnSettings()" class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold btn-pop shadow-md">저장하기</button>
+                </div>
+            </div>
+        </div>
+
         <div class="max-w-4xl w-full">
             <div class="text-center mb-10">
                 <h1 class="text-4xl md:text-5xl font-bold text-amber-600 mb-3 title-font tracking-wide">✨ 다함께 화면 보기 ✨</h1>
@@ -66,6 +86,11 @@
                     </button>
                     <button onclick="selectRole('trainee')" class="btn-pop w-full py-4 bg-white border-2 border-amber-400 text-amber-600 hover:bg-amber-50 rounded-2xl font-bold text-lg shadow-sm flex items-center justify-center gap-2">
                         👀 화면 보미 (시청하기)
+                    </button>
+                </div>
+                <div class="mt-6 pt-4 border-t border-amber-100 text-center">
+                    <button onclick="openTurnSettings()" class="text-sm font-medium text-amber-600 hover:text-amber-800 flex items-center justify-center gap-1 mx-auto btn-pop">
+                        ⚙️ 접속 불량 시 네트워크 우회 설정
                     </button>
                 </div>
             </div>
@@ -178,44 +203,72 @@
         let connectInterval = null;
         let traineeConn = null;
 
-        // 🌟 [최종 방화벽 우회 설정 및 사설 TURN 서버 입력란]
-        const customIceConfig = {
-            config: {
-                'iceServers': [
-                    // 글로벌 STUN 서버 (기본적인 길 찾기)
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun.cloudflare.com:3478' },
-                    // 공용 무료 TURN 서버 (서버 과부하로 자주 끊길 수 있음)
-                    {
-                        urls: 'turn:openrelay.metered.ca:80',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    }
-                    /* 💡 [매우 중요] LTE/다른 인터넷에서 무조건 뚫리게 하려면 아래 주석을 풀고 나만의 서버를 입력하세요.
-                     * 얻는 곳: metered.ca 접속 -> 가입(무료) -> TURN 서버 생성 -> 주소/아이디/비번 획득
-                     *
-                    ,{
-                        urls: 'turn:나의서버주소.metered.ca:443',
-                        username: '나의아이디',
-                        credential: '나의비밀번호'
-                    }
-                    */
-                ],
-                'iceCandidatePoolSize': 10 // 연결 후보군 미리 생성 (속도 향상)
-            },
-            debug: 1
-        };
+        // 🌟 [수정됨] 고정된 설정 대신, 사용자가 입력한 TURN 서버를 동적으로 가져오는 함수
+        function getIceConfig() {
+            const savedUrl = localStorage.getItem('turnUrl');
+            const savedUser = localStorage.getItem('turnUser');
+            const savedPass = localStorage.getItem('turnPass');
+
+            const iceServers = [
+                // 글로벌 STUN 서버 (기본적인 길 찾기)
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ];
+
+            // 사용자가 저장한 TURN 서버가 있다면 추가하여 방화벽 뚫기 적용
+            if (savedUrl && savedUser && savedPass) {
+                iceServers.push({
+                    urls: savedUrl,
+                    username: savedUser,
+                    credential: savedPass
+                });
+                console.log("✅ 개인 TURN 서버가 적용되었습니다.");
+            } else {
+                console.log("⚠️ 기본 STUN 서버만 사용 중입니다. (LTE 등에서 막힐 수 있음)");
+            }
+
+            return {
+                config: {
+                    'iceServers': iceServers,
+                    'iceCandidatePoolSize': 10
+                },
+                debug: 1
+            };
+        }
+
+        // ⚙️ TURN 서버 설정 UI 컨트롤 로직
+        function openTurnSettings() {
+            document.getElementById('turnUrl').value = localStorage.getItem('turnUrl') || '';
+            document.getElementById('turnUser').value = localStorage.getItem('turnUser') || '';
+            document.getElementById('turnPass').value = localStorage.getItem('turnPass') || '';
+            document.getElementById('turnModal').classList.remove('hidden');
+        }
+
+        function closeTurnSettings() {
+            document.getElementById('turnModal').classList.add('hidden');
+        }
+
+        function saveTurnSettings() {
+            const url = document.getElementById('turnUrl').value.trim();
+            const user = document.getElementById('turnUser').value.trim();
+            const pass = document.getElementById('turnPass').value.trim();
+
+            if(url && user && pass) {
+                localStorage.setItem('turnUrl', url);
+                localStorage.setItem('turnUser', user);
+                localStorage.setItem('turnPass', pass);
+                showMsg("우회 서버 설정이 저장되었습니다! 🎉");
+            } else if (!url && !user && !pass) {
+                localStorage.removeItem('turnUrl');
+                localStorage.removeItem('turnUser');
+                localStorage.removeItem('turnPass');
+                showMsg("우회 서버 설정이 초기화되었습니다.");
+            } else {
+                showMsg("URL, 아이디, 비밀번호를 모두 입력해주세요.");
+                return;
+            }
+            closeTurnSettings();
+        }
 
         // 구글 스프레드시트 실시간 데이터 가져오기
         async function fetchAuthCodeFromSheet() {
@@ -332,8 +385,8 @@
                 const inputCode = document.getElementById('authCodeInput').value || "1234";
                 const roomId = 'mirror-korea-' + inputCode;
 
-                // 통신 서버 연결 (공통 방화벽 우회 설정 적용)
-                myPeer = new Peer(roomId, customIceConfig);
+                // 통신 서버 연결 (개인 TURN 설정 동적 반영)
+                myPeer = new Peer(roomId, getIceConfig());
 
                 myPeer.on('open', id => {
                     console.log('강사 방이 성공적으로 생성되었습니다.');
@@ -436,7 +489,8 @@
                 const code = sheetCode || "1234";
                 targetRoomId = 'mirror-korea-' + code;
 
-                myPeer = new Peer(customIceConfig); 
+                // 통신 서버 연결 (개인 TURN 설정 동적 반영)
+                myPeer = new Peer(getIceConfig()); 
 
                 myPeer.on('open', id => {
                     console.log('연수자 준비 완료');
