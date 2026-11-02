@@ -289,7 +289,7 @@
 
                 // 연수자가 접속을 시도하면
                 myPeer.on('connection', conn => {
-                    conn.on('open', () => {
+                    const makeCall = () => {
                         // 🌟 다중 접속 오류 해결: 이미 연결된 보미는 중복해서 화면을 다시 보내지 않음
                         if (activeCalls[conn.peer]) return; 
 
@@ -303,7 +303,14 @@
                         conn.on('close', () => removeViewer(conn.peer));
                         call.on('close', () => removeViewer(conn.peer));
                         call.on('error', () => removeViewer(conn.peer));
-                    });
+                    };
+
+                    // 연결이 이미 열려있으면 즉시 호출, 아니면 열릴 때 호출 (타이밍 누락 방지)
+                    if (conn.open) {
+                        makeCall();
+                    } else {
+                        conn.on('open', makeCall);
+                    }
                 });
 
                 myPeer.on('error', err => {
@@ -406,9 +413,13 @@
                 });
 
                 myPeer.on('error', err => {
+                    console.warn("보미 Peer 통신 에러:", err.type);
                     // 🌟 다중 접속 오류 해결: 강사 방이 아직 없을 때만 재시도를 위해 초기화
                     if (err.type === 'peer-unavailable') {
-                        traineeConn = null; 
+                        if (traineeConn) {
+                            traineeConn.close();
+                            traineeConn = null; 
+                        }
                     }
                 });
             } catch(err) {
@@ -425,11 +436,21 @@
             const connect = () => {
                 if (!myPeer || myPeer.destroyed) return;
                 
-                // 🌟 트래픽 잼 해결: 이미 신호를 보냈다면 답이 올 때까지 중복해서 신호를 보내지 않음
-                if (traineeConn) return; 
+                // 🌟 이미 성공적으로 연결되어 대기 중이라면 무시
+                if (traineeConn && traineeConn.open) return; 
+
+                // 🌟 연결 객체는 생겼으나 열리지 않고 멈춰있다면(오류 상태), 강제 초기화 후 재시도
+                if (traineeConn && !traineeConn.open) {
+                    traineeConn.close();
+                    traineeConn = null;
+                }
                 
                 // 강사에게 '나 여기있다'고 신호 보냄
-                traineeConn = myPeer.connect(targetRoomId); 
+                traineeConn = myPeer.connect(targetRoomId, { reliable: true }); 
+
+                traineeConn.on('open', () => {
+                    console.log("나누미와 신호 연결 완료! 영상을 기다립니다.");
+                });
 
                 traineeConn.on('close', () => { 
                     traineeConn = null; 
@@ -439,7 +460,7 @@
             };
             
             connect(); // 즉시 실행
-            connectInterval = setInterval(connect, 2000); // 0.5초 폭탄 요청을 2초로 완화하여 서버 안정화
+            connectInterval = setInterval(connect, 3000); // 3초 간격으로 안정적인 재시도
         }
 
         function resetTraineeVideo(isStopped = false) {
