@@ -178,6 +178,34 @@
         let connectInterval = null;
         let traineeConn = null; // 다중 접속 안정화를 위한 변수 추가
 
+        // 🌟 [핵심 변경] 강력한 방화벽/LTE 우회를 위한 종합 TURN/STUN 서버 설정
+        // 통신사(LTE)와 교육망(유선) 방화벽을 모두 뚫어보기 위해 가용한 모든 포트(80, 443)와 프로토콜(UDP, TCP)을 쏟아붓습니다.
+        const customIceConfig = {
+            config: {
+                'iceServers': [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun.cloudflare.com:3478' },
+                    { urls: 'stun:openrelay.metered.ca:80' },
+                    {
+                        urls: 'turn:openrelay.metered.ca:80',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
+                ]
+            }
+        };
+
         // 구글 스프레드시트 실시간 데이터 가져오기
         async function fetchAuthCodeFromSheet() {
             const sheetUrl = 'https://docs.google.com/spreadsheets/d/1gZZF84ftssX4ekiJDVOZe3m57jfmoAJg2PYTAMwLEPI/export?format=csv&gid=0';
@@ -293,24 +321,8 @@
                 const inputCode = document.getElementById('authCodeInput').value || "1234";
                 const roomId = 'mirror-korea-' + inputCode;
 
-                // 통신 서버 연결 (강력한 방화벽 우회를 위한 포트 443 및 TCP 기반 STUN/TURN 서버 설정)
-                myPeer = new Peer(roomId, {
-                    config: {
-                        'iceServers': [
-                            // 1. AWS 한국 서버 (일반 웹사이트 포트인 443을 사용하여 교육망 방화벽 우회 유도)
-                            { urls: 'stun:stun.kinesisvideo.ap-northeast-2.amazonaws.com:443' },
-                            // 2. Cloudflare (빠르고 안정적인 글로벌 통신망)
-                            { urls: 'stun:stun.cloudflare.com:3478' },
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            // 3. UDP가 완전히 차단된 유선망/모바일망을 위한 TCP 전용 강제 중계 서버
-                            {
-                                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                                username: 'openrelayproject',
-                                credential: 'openrelayproject'
-                            }
-                        ]
-                    }
-                });
+                // 통신 서버 연결 (공통 방화벽 우회 설정 적용)
+                myPeer = new Peer(roomId, customIceConfig);
 
                 myPeer.on('open', id => {
                     console.log('강사 방이 성공적으로 생성되었습니다.');
@@ -403,24 +415,8 @@
                 const code = sheetCode || "1234";
                 targetRoomId = 'mirror-korea-' + code;
 
-                // 랜덤 ID로 통신 서버 접속 (강력한 방화벽 우회를 위한 포트 443 및 TCP 기반 STUN/TURN 서버 설정)
-                myPeer = new Peer({
-                    config: {
-                        'iceServers': [
-                            // 1. AWS 한국 서버 (일반 웹사이트 포트인 443을 사용하여 교육망 방화벽 우회 유도)
-                            { urls: 'stun:stun.kinesisvideo.ap-northeast-2.amazonaws.com:443' },
-                            // 2. Cloudflare (빠르고 안정적인 글로벌 통신망)
-                            { urls: 'stun:stun.cloudflare.com:3478' },
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            // 3. UDP가 완전히 차단된 유선망/모바일망을 위한 TCP 전용 강제 중계 서버
-                            {
-                                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                                username: 'openrelayproject',
-                                credential: 'openrelayproject'
-                            }
-                        ]
-                    }
-                }); 
+                // 랜덤 ID로 통신 서버 접속 (공통 방화벽 우회 설정 적용)
+                myPeer = new Peer(customIceConfig); 
 
                 myPeer.on('open', id => {
                     console.log('연수자 준비 완료');
