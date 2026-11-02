@@ -131,12 +131,14 @@
                 </div>
 
                 <div id="videoContainer" class="hidden relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group border-4 border-white" ondblclick="toggleFullScreen()">
-                    <video id="traineeVideo" class="w-full h-full object-contain" autoplay playsinline></video>
+                    <!-- 연수자 비디오에 기본적으로 muted 속성을 추가하여 하울링 원천 차단 -->
+                    <video id="traineeVideo" class="w-full h-full object-contain" autoplay playsinline muted></video>
                     
                     <!-- 커스텀 컨트롤 바 -->
                     <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex justify-between items-center z-10">
                         <button onclick="toggleAudio()" class="btn-pop bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-2 font-medium">
-                            <span id="audioIcon">🔊</span> <span id="audioText">소리 끄기</span>
+                            <!-- 초기 상태를 '소리 켜기' 및 음소거 아이콘으로 변경 -->
+                            <span id="audioIcon">🔇</span> <span id="audioText">소리 켜기</span>
                         </button>
                         <div class="hidden sm:flex gap-2 text-white text-sm opacity-90 font-medium">
                             <span>💡 화면을 두 번 누르면 전체화면이 돼요!</span>
