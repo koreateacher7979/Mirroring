@@ -163,6 +163,7 @@
         let activeConns = {};
         let targetRoomId = null;
         let connectInterval = null;
+        let traineeConn = null; // 다중 접속 안정화를 위한 변수 추가
 
         // 구글 스프레드시트 실시간 데이터 가져오기
         async function fetchAuthCodeFromSheet() {
@@ -285,6 +286,9 @@
                 // 연수자가 접속을 시도하면
                 myPeer.on('connection', conn => {
                     conn.on('open', () => {
+                        // 🌟 다중 접속 오류 해결: 이미 연결된 보미는 중복해서 화면을 다시 보내지 않음
+                        if (activeCalls[conn.peer]) return; 
+
                         activeConns[conn.peer] = conn;
                         
                         // 강사가 연수자에게 영상 통화를 걸어 화면 스트림 전달
@@ -294,6 +298,7 @@
                         
                         conn.on('close', () => removeViewer(conn.peer));
                         call.on('close', () => removeViewer(conn.peer));
+                        call.on('error', () => removeViewer(conn.peer));
                     });
                 });
 
@@ -393,7 +398,10 @@
                 });
 
                 myPeer.on('error', err => {
-                    // 강사 방이 아직 없을 때 (setInterval을 통해 재시도됨)
+                    // 🌟 다중 접속 오류 해결: 강사 방이 아직 없을 때만 재시도를 위해 초기화
+                    if (err.type === 'peer-unavailable') {
+                        traineeConn = null; 
+                    }
                 });
             } catch(err) {
                 console.error("연수자 접속 에러:", err);
@@ -404,15 +412,23 @@
         // 강사 방을 찾을 때까지 주기적으로 연결 시도
         function tryConnectToInstructor() {
             if (connectInterval) clearInterval(connectInterval);
+            traineeConn = null;
             
             const connect = () => {
                 if (!myPeer || myPeer.destroyed) return;
+                
+                // 🌟 트래픽 잼 해결: 이미 신호를 보냈다면 답이 올 때까지 중복해서 신호를 보내지 않음
+                if (traineeConn) return; 
+                
                 // 강사에게 '나 여기있다'고 신호 보냄
-                myPeer.connect(targetRoomId); 
+                traineeConn = myPeer.connect(targetRoomId); 
+
+                traineeConn.on('close', () => { traineeConn = null; });
+                traineeConn.on('error', () => { traineeConn = null; });
             };
             
             connect(); // 즉시 실행
-            connectInterval = setInterval(connect, 500); // 대기 시간을 0.5초로 더 단축하여 딜레이 해소
+            connectInterval = setInterval(connect, 2000); // 0.5초 폭탄 요청을 2초로 완화하여 서버 안정화
         }
 
         function resetTraineeVideo() {
@@ -423,6 +439,10 @@
 
         function cleanupTrainee() {
             if (connectInterval) clearInterval(connectInterval);
+            if (traineeConn) {
+                traineeConn.close();
+                traineeConn = null;
+            }
             if (myPeer) {
                 myPeer.destroy();
                 myPeer = null;
