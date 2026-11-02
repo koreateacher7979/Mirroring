@@ -293,24 +293,16 @@
                 const inputCode = document.getElementById('authCodeInput').value || "1234";
                 const roomId = 'mirror-korea-' + inputCode;
 
-                // 통신 서버 연결 (STUN 서버 추가로 딜레이 최소화 + TURN 서버로 방화벽 우회)
+                // 통신 서버 연결 (강력한 방화벽 우회를 위한 포트 443 및 TCP 기반 STUN/TURN 서버 설정)
                 myPeer = new Peer(roomId, {
                     config: {
                         'iceServers': [
+                            // 1. AWS 한국 서버 (일반 웹사이트 포트인 443을 사용하여 교육망 방화벽 우회 유도)
+                            { urls: 'stun:stun.kinesisvideo.ap-northeast-2.amazonaws.com:443' },
+                            // 2. Cloudflare (빠르고 안정적인 글로벌 통신망)
+                            { urls: 'stun:stun.cloudflare.com:3478' },
                             { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' },
-                            { urls: 'stun:global.stun.twilio.com:3478' },
-                            // 방화벽에 막혔을 때 강제 중계를 위한 공용 TURN 서버
-                            {
-                                urls: 'turn:openrelay.metered.ca:80',
-                                username: 'openrelayproject',
-                                credential: 'openrelayproject'
-                            },
-                            {
-                                urls: 'turn:openrelay.metered.ca:443',
-                                username: 'openrelayproject',
-                                credential: 'openrelayproject'
-                            },
+                            // 3. UDP가 완전히 차단된 유선망/모바일망을 위한 TCP 전용 강제 중계 서버
                             {
                                 urls: 'turn:openrelay.metered.ca:443?transport=tcp',
                                 username: 'openrelayproject',
@@ -411,24 +403,16 @@
                 const code = sheetCode || "1234";
                 targetRoomId = 'mirror-korea-' + code;
 
-                // 랜덤 ID로 통신 서버 접속 (STUN 서버 추가로 빠른 연결 + TURN 서버로 방화벽 우회)
+                // 랜덤 ID로 통신 서버 접속 (강력한 방화벽 우회를 위한 포트 443 및 TCP 기반 STUN/TURN 서버 설정)
                 myPeer = new Peer({
                     config: {
                         'iceServers': [
+                            // 1. AWS 한국 서버 (일반 웹사이트 포트인 443을 사용하여 교육망 방화벽 우회 유도)
+                            { urls: 'stun:stun.kinesisvideo.ap-northeast-2.amazonaws.com:443' },
+                            // 2. Cloudflare (빠르고 안정적인 글로벌 통신망)
+                            { urls: 'stun:stun.cloudflare.com:3478' },
                             { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' },
-                            { urls: 'stun:global.stun.twilio.com:3478' },
-                            // 방화벽에 막혔을 때 강제 중계를 위한 공용 TURN 서버
-                            {
-                                urls: 'turn:openrelay.metered.ca:80',
-                                username: 'openrelayproject',
-                                credential: 'openrelayproject'
-                            },
-                            {
-                                urls: 'turn:openrelay.metered.ca:443',
-                                username: 'openrelayproject',
-                                credential: 'openrelayproject'
-                            },
+                            // 3. UDP가 완전히 차단된 유선망/모바일망을 위한 TCP 전용 강제 중계 서버
                             {
                                 urls: 'turn:openrelay.metered.ca:443?transport=tcp',
                                 username: 'openrelayproject',
