@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>실시간 화면 미러링 클래스</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- P2P 통신을 위한 PeerJS 라이브러리 추가 (이 부분이 누락되어 에러가 발생했습니다) -->
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -269,7 +273,12 @@
 
             } catch (err) {
                 console.error("공유 에러: ", err);
-                showMsg("화면 공유 권한이 없거나 취소되었습니다.");
+                if (typeof Peer === 'undefined') {
+                    showMsg("통신 라이브러리(PeerJS)를 불러오지 못했습니다. 코드를 확인해주세요.");
+                } else {
+                    showMsg("오류발생: " + err.message + " (화면 공유가 취소되었을 수 있습니다.)");
+                }
+                stopScreenShare();
             }
         }
 
@@ -306,44 +315,49 @@
 
         // ================= 연수자 (수신자) 로직 =================
         async function joinAsTrainee() {
-            const sheetCode = await fetchAuthCodeFromSheet();
-            const code = sheetCode || "1234";
-            targetRoomId = 'mirror-korea-' + code;
+            try {
+                const sheetCode = await fetchAuthCodeFromSheet();
+                const code = sheetCode || "1234";
+                targetRoomId = 'mirror-korea-' + code;
 
-            // 랜덤 ID로 통신 서버 접속
-            myPeer = new Peer(); 
+                // 랜덤 ID로 통신 서버 접속
+                myPeer = new Peer(); 
 
-            myPeer.on('open', id => {
-                console.log('연수자 준비 완료');
-                tryConnectToInstructor();
-            });
+                myPeer.on('open', id => {
+                    console.log('연수자 준비 완료');
+                    tryConnectToInstructor();
+                });
 
-            // 강사가 화면을 걸어오면 수신
-            myPeer.on('call', call => {
-                call.answer(); // 통화 수락
-                if(connectInterval) clearInterval(connectInterval); 
-                
-                call.on('stream', remoteStream => {
-                    document.getElementById('traineeStatus').classList.add('hidden');
-                    document.getElementById('videoContainer').classList.remove('hidden');
-                    const video = document.getElementById('traineeVideo');
+                // 강사가 화면을 걸어오면 수신
+                myPeer.on('call', call => {
+                    call.answer(); // 통화 수락
+                    if(connectInterval) clearInterval(connectInterval); 
                     
-                    if(video.srcObject !== remoteStream) {
-                        video.srcObject = remoteStream;
-                        video.play().catch(e => console.error("자동 재생 대기:", e));
-                    }
+                    call.on('stream', remoteStream => {
+                        document.getElementById('traineeStatus').classList.add('hidden');
+                        document.getElementById('videoContainer').classList.remove('hidden');
+                        const video = document.getElementById('traineeVideo');
+                        
+                        if(video.srcObject !== remoteStream) {
+                            video.srcObject = remoteStream;
+                            video.play().catch(e => console.error("자동 재생 대기:", e));
+                        }
+                    });
+
+                    call.on('close', () => {
+                        // 강사가 공유를 중단한 경우
+                        resetTraineeVideo();
+                        tryConnectToInstructor(); // 다시 강사 대기 상태로 전환
+                    });
                 });
 
-                call.on('close', () => {
-                    // 강사가 공유를 중단한 경우
-                    resetTraineeVideo();
-                    tryConnectToInstructor(); // 다시 강사 대기 상태로 전환
+                myPeer.on('error', err => {
+                    // 강사 방이 아직 없을 때 (setInterval을 통해 재시도됨)
                 });
-            });
-
-            myPeer.on('error', err => {
-                // 강사 방이 아직 없을 때 (setInterval을 통해 재시도됨)
-            });
+            } catch(err) {
+                console.error("연수자 접속 에러:", err);
+                showMsg("연수자 화면 설정 중 오류가 발생했습니다.");
+            }
         }
 
         // 강사 방을 찾을 때까지 주기적으로 연결 시도
