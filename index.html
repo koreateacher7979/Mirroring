@@ -328,17 +328,23 @@
                     console.log('🎈 나누미 통신망 개설 완료:', id);
                 });
 
-                myPeer.on('call', (call) => {
-                    if (localStream) {
-                        call.answer(localStream);
-                        activeCalls[call.peer] = call;
-                        updateViewerCount();
-                        
-                        call.on('close', () => removeViewer(call.peer));
-                        call.on('error', () => removeViewer(call.peer));
-                    } else {
-                        call.close();
-                    }
+                // ★ 완벽한 방송국 방식: 연수생(보미)이 문을 두드리면 강사가 영상을 걸어줍니다 ★
+                myPeer.on('connection', (conn) => {
+                    conn.on('open', () => {
+                        if (localStream) {
+                            console.log("보미에게 역으로 영상 송출 시작:", conn.peer);
+                            // 강사가 영상을 담아서 연수생에게 전화를 걺!
+                            const call = myPeer.call(conn.peer, localStream);
+                            activeCalls[conn.peer] = call;
+                            updateViewerCount();
+                            
+                            call.on('close', () => removeViewer(conn.peer));
+                            call.on('error', () => removeViewer(conn.peer));
+                        } else {
+                            conn.send('NOT_READY');
+                            setTimeout(() => conn.close(), 500);
+                        }
+                    });
                 });
 
                 myPeer.on('error', err => {
@@ -390,12 +396,57 @@
         }
 
         // ================= 보미 (연수생) 로직 =================
+        let isReceivingVideo = false; // 영상 수신 상태 확인 변수
+
         function joinAsTrainee() {
             myPeer = createPeer(); // 연수생은 랜덤 ID 배정
             
             myPeer.on('open', id => {
                 console.log('👀 보미 네트워크 접속 성공');
                 searchForNanumi();
+            });
+
+            // ★ 강사(나누미)가 역으로 걸어온 영상을 받습니다 ★
+            myPeer.on('call', (call) => {
+                console.log("나누미의 화면 수신 중!");
+                isReceivingVideo = true;
+                if (connectInterval) clearInterval(connectInterval); // 핑거링 중지
+                
+                // 빈손으로 받기 (가짜 비디오/오디오가 없으므로 SDP 충돌 및 모바일 먹통 완벽 해결)
+                call.answer(); 
+
+                call.on('stream', (stream) => {
+                    const video = document.getElementById('traineeVideo');
+                    video.srcObject = stream;
+                    
+                    document.getElementById('traineeStatus').classList.add('hidden');
+                    document.getElementById('videoContainer').classList.remove('hidden');
+
+                    if (!isFirewallMode) {
+                        document.getElementById('blackScreenFix').classList.remove('hidden');
+                    }
+
+                    // 모바일 자동재생 정책 대응
+                    const attemptPlay = () => {
+                        video.play().catch(e => {
+                            console.warn("자동재생 차단됨:", e);
+                            document.getElementById('playOverlay').classList.remove('hidden');
+                        });
+                    };
+                    
+                    attemptPlay(); // 즉시 재생 시도
+                    video.onloadedmetadata = () => attemptPlay(); // 메타데이터 로드 후 확인 사살
+                });
+
+                call.on('close', () => {
+                    isReceivingVideo = false;
+                    resetTraineeVideo(true);
+                    searchForNanumi(); // 끊어지면 다시 찾기 시작
+                });
+                
+                call.on('error', () => {
+                    isReceivingVideo = false;
+                });
             });
 
             myPeer.on('error', err => {
@@ -409,62 +460,30 @@
             const targetId = `mirror_korea_${sysConfig.roomId}`;
             let attempts = 0;
 
-            const tryCall = () => {
-                if (traineeCall && traineeCall.open) return; 
+            const tryConnect = () => {
+                if (isReceivingVideo) return; // 영상 받는 중이면 검색(핑) 중지
                 
                 attempts++;
                 if (attempts > 3) {
                     document.getElementById('traineeStatusText').innerHTML = "네트워크 우회 경로를 탐색 중입니다... 🚀";
                 }
 
-                // 가짜 빈 스트림(비디오)을 보내어 통화를 걸기
-                const fakeCanvas = document.createElement("canvas");
-                fakeCanvas.width = 1; fakeCanvas.height = 1;
-                const fakeStream = fakeCanvas.captureStream(1);
+                // ★ 가짜 비디오를 보내지 않고 데이터 연결로 "똑똑" 문만 두드리기 ★
+                const conn = myPeer.connect(targetId);
                 
-                // 모바일 브라우저를 다운(프리즈)시키는 강제 오디오 생성 코드 삭제 완벽 조치
+                conn.on('open', () => {
+                    console.log("나누미 방에 접속 요청(똑똑) 성공!");
+                });
                 
-                traineeCall = myPeer.call(targetId, fakeStream);
-                
-                if (!traineeCall) return;
-
-                traineeCall.on('stream', (stream) => {
-                    clearInterval(connectInterval); 
-                    
-                    const video = document.getElementById('traineeVideo');
-                    video.srcObject = stream;
-                    
-                    document.getElementById('traineeStatus').classList.add('hidden');
-                    document.getElementById('videoContainer').classList.remove('hidden');
-
-                    if (!isFirewallMode) {
-                        document.getElementById('blackScreenFix').classList.remove('hidden');
+                conn.on('data', (data) => {
+                    if (data === 'NOT_READY') {
+                        console.log("나누미가 아직 공유를 시작하지 않았습니다.");
                     }
-
-                    // 모바일 자동재생 정책 대응 및 강력한 재생 시도
-                    const attemptPlay = () => {
-                        video.play().catch(e => {
-                            console.warn("자동재생 차단됨:", e);
-                            document.getElementById('playOverlay').classList.remove('hidden');
-                        });
-                    };
-                    
-                    attemptPlay(); // 즉시 재생 시도
-                    video.onloadedmetadata = () => attemptPlay(); // 메타데이터 로드 후 확인 사살
-                });
-
-                traineeCall.on('close', () => {
-                    resetTraineeVideo(true);
-                    searchForNanumi(); 
-                });
-                
-                traineeCall.on('error', () => {
-                    traineeCall = null;
                 });
             };
 
-            tryCall();
-            connectInterval = setInterval(tryCall, 4000); 
+            tryConnect();
+            connectInterval = setInterval(tryConnect, 4000); 
         }
 
         function resetTraineeVideo(isStopped = false) {
